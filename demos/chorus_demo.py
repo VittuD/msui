@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import time
 import pygame
 
@@ -15,12 +17,22 @@ from msui.backends.input_pygame import PygameInput
 from msui.core.events import (
     NAV_LEFT, NAV_RIGHT, PAGE_PREV, PAGE_NEXT, VALUE_DELTA, TOGGLE_BYPASS, QUIT
 )
+from msui.core.dirty import (
+    DIRTY_NONE,
+    DIRTY_ALL,
+    DIRTY_HEADER,
+    DIRTY_PAGE,
+    DIRTY_TILES,
+    DIRTY_TILE0,
+    DIRTY_TILE1,
+    DIRTY_TILE2,
+)
 
 
 def build_demo_effect() -> Effect:
     params = {
         # MAIN
-        "rate": 0,          # signed dial demo (-12..+12)
+        "rate": 0,
         "mode": 0,
         "sync": False,
 
@@ -34,10 +46,10 @@ def build_demo_effect() -> Effect:
         "post": 70,
         "dry": 90,
 
-        # TUNE (new page)
-        "detune": 0,        # -12..+12
-        "bpm": 120,         # 30..300
-        "div": 2,           # enum index
+        # TUNE
+        "detune": 0,
+        "bpm": 120,
+        "div": 2,
     }
 
     pages = [
@@ -87,40 +99,56 @@ def build_demo_effect() -> Effect:
     return Effect(name="CHORUS", pages=pages, params=params)
 
 
-def apply_event(effect: Effect, event) -> tuple[bool, bool]:
+def _tile_bit(i: int) -> int:
+    return (DIRTY_TILE0, DIRTY_TILE1, DIRTY_TILE2)[i]
+
+
+def apply_event(effect: Effect, event) -> tuple[bool, int]:
+    """
+    Returns (running_ok, dirty_mask).
+    """
     t = event.type
 
     if t == QUIT:
-        return False, False
+        return False, DIRTY_NONE
 
     if t == TOGGLE_BYPASS:
         effect.enabled = not effect.enabled
-        return True, True
+        return True, DIRTY_HEADER
 
     if t == NAV_LEFT:
+        old = effect.control_index
         effect.control_index = (effect.control_index - 1) % 3
-        return True, True
+        new = effect.control_index
+        # focus frame changes on two tiles
+        return True, (_tile_bit(old) | _tile_bit(new))
 
     if t == NAV_RIGHT:
+        old = effect.control_index
         effect.control_index = (effect.control_index + 1) % 3
-        return True, True
+        new = effect.control_index
+        return True, (_tile_bit(old) | _tile_bit(new))
 
     if t == PAGE_PREV:
         effect.page_index = (effect.page_index - 1) % len(effect.pages)
-        return True, True
+        # page indicator + all tiles change
+        return True, (DIRTY_PAGE | DIRTY_TILES)
 
     if t == PAGE_NEXT:
         effect.page_index = (effect.page_index + 1) % len(effect.pages)
-        return True, True
+        return True, (DIRTY_PAGE | DIRTY_TILES)
 
     if t == VALUE_DELTA:
         ctrl = effect.current_control()
         before = effect.params.get(ctrl.key, None)
         ctrl.adjust(event.delta, effect)
         after = effect.params.get(ctrl.key, None)
-        return True, (before != after)
 
-    return True, False
+        if before != after:
+            return True, _tile_bit(effect.control_index)
+        return True, DIRTY_NONE
+
+    return True, DIRTY_NONE
 
 
 def main():
@@ -142,7 +170,7 @@ def main():
 
     effect = build_demo_effect()
 
-    # --- profiling counters ---
+    # profiling counters
     last_print = time.perf_counter()
     loops = 0
     renders = 0
@@ -150,31 +178,28 @@ def main():
     accum_render_s = 0.0
     accum_present_s = 0.0
 
-    needs_redraw = True
+    dirty = DIRTY_ALL
     running = True
 
     while running:
         dt_ms = clock.tick(theme.FPS)
-        input_src.pump_pygame_events()
+
+        # stable input API (pump); back-compat still works too
+        input_src.pump()
 
         events = input_src.get_events(dt_ms)
         events_total += len(events)
 
-        changed = False
         for ev in events:
-            ok, did_change = apply_event(effect, ev)
+            ok, d = apply_event(effect, ev)
             if not ok:
                 running = False
                 break
-            if did_change:
-                changed = True
+            dirty |= d
 
-        if changed:
-            needs_redraw = True
-
-        if needs_redraw:
+        if dirty != DIRTY_NONE:
             t0 = time.perf_counter()
-            render_effect_editor(canvas, effect, theme)
+            render_effect_editor(canvas, effect, theme, dirty_mask=dirty)
             t1 = time.perf_counter()
 
             scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
@@ -185,7 +210,8 @@ def main():
             renders += 1
             accum_render_s += (t1 - t0)
             accum_present_s += (t2 - t1)
-            needs_redraw = False
+
+            dirty = DIRTY_NONE
 
         loops += 1
 

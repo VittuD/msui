@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
+
+from msui.core.dirty import DIRTY_ALL, DIRTY_NONE
 
 
 @dataclass
@@ -21,8 +25,17 @@ class Effect:
     # UI-only state (selection inside compound controls, etc.)
     ui: Dict[str, Any] = field(default_factory=dict)
 
+    # Dirty mask for incremental rendering
+    dirty: int = DIRTY_ALL
+
     def current_page(self) -> Page:
         return self.pages[self.page_index]
 
     def current_control(self):
         return self.current_page().controls[self.control_index]
+
+    def mark_dirty(self, mask: int) -> None:
+        self.dirty |= int(mask)
+
+    def clear_dirty(self) -> None:
+        self.dirty = DIRTY_NONE
