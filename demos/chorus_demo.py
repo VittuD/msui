@@ -14,20 +14,9 @@ from msui.render import icons as wave_icons
 from msui.render.screen_effect import render_effect_editor
 from msui.backends.canvas_pygame import PygameCanvas
 from msui.backends.input_pygame import PygameInput
-from msui.core.events import (
-    NAV_LEFT, NAV_RIGHT, PAGE_PREV, PAGE_NEXT, VALUE_DELTA, TOGGLE_BYPASS, QUIT
-)
-from msui.core.dirty import (
-    DIRTY_NONE,
-    DIRTY_ALL,
-    DIRTY_HEADER,
-    DIRTY_PAGE,
-    DIRTY_TILES,
-    DIRTY_TILE0,
-    DIRTY_TILE1,
-    DIRTY_TILE2,
-)
+from msui.core.dirty import DIRTY_NONE, DIRTY_ALL
 from msui.core.profiler import Profiler
+from msui.core.controller import apply_event
 
 
 def build_demo_effect() -> Effect:
@@ -90,57 +79,6 @@ def build_demo_effect() -> Effect:
     ]
 
     return Effect(name="CHORUS", pages=pages, params=params)
-
-
-def _tile_bit(i: int) -> int:
-    return (DIRTY_TILE0, DIRTY_TILE1, DIRTY_TILE2)[i]
-
-
-def apply_event(effect: Effect, event) -> tuple[bool, int]:
-    t = event.type
-
-    if t == QUIT:
-        return False, DIRTY_NONE
-
-    if t == TOGGLE_BYPASS:
-        effect.enabled = not effect.enabled
-        return True, DIRTY_HEADER
-
-    if t == NAV_LEFT:
-        n = effect.n_controls()
-        old = effect.control_index
-        effect.control_index = (effect.control_index - 1) % n
-        new = effect.control_index
-        return True, (_tile_bit(old) | _tile_bit(new))
-
-    if t == NAV_RIGHT:
-        n = effect.n_controls()
-        old = effect.control_index
-        effect.control_index = (effect.control_index + 1) % n
-        new = effect.control_index
-        return True, (_tile_bit(old) | _tile_bit(new))
-
-    if t == PAGE_PREV:
-        effect.page_index = (effect.page_index - 1) % len(effect.pages)
-        effect.control_index %= effect.n_controls()
-        return True, (DIRTY_PAGE | DIRTY_TILES)
-
-    if t == PAGE_NEXT:
-        effect.page_index = (effect.page_index + 1) % len(effect.pages)
-        effect.control_index %= effect.n_controls()
-        return True, (DIRTY_PAGE | DIRTY_TILES)
-
-    if t == VALUE_DELTA:
-        ctrl = effect.current_control()
-        before = effect.params.get(ctrl.key, None)
-        ctrl.adjust(event.delta, effect)
-        after = effect.params.get(ctrl.key, None)
-
-        if before != after:
-            return True, _tile_bit(effect.control_index)
-        return True, DIRTY_NONE
-
-    return True, DIRTY_NONE
 
 
 def main():
