@@ -17,10 +17,15 @@ class ButtonControl(Control):
     def adjust(self, delta: int, effect):
         if delta == 0:
             return
-        if delta > 0:
-            effect.params[self.key] = True   # UP => ON
+
+        cur = bool(effect.params.get(self.key, False))
+
+        if self.clamp:
+            # UP => ON, DOWN => OFF
+            effect.params[self.key] = True if delta > 0 else False
         else:
-            effect.params[self.key] = False  # DOWN => OFF
+            # wrap/toggle mode: any movement toggles
+            effect.params[self.key] = not cur
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)

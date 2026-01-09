@@ -22,11 +22,13 @@ class EnumControl(Control):
         return max(1, len(self.options))
 
     def _get_index(self, effect) -> int:
-        idx = int(effect.params.get(self.key, 0))
         if len(self.options) == 0:
             return 0
+        idx = int(effect.params.get(self.key, 0))
+        if self.clamp:
+            return max(0, min(len(self.options) - 1, idx))
         return idx % len(self.options)
-
+    
     def value_text(self, effect) -> str:
         if not self.options:
             return "-"
@@ -35,10 +37,17 @@ class EnumControl(Control):
     def adjust(self, delta: int, effect):
         if not self.options or delta == 0:
             return
+        n = len(self.options)
         idx = self._get_index(effect)
-        idx = (idx + int(delta)) % len(self.options)
-        effect.params[self.key] = idx
+        idx2 = idx + int(delta)
 
+        if self.clamp:
+            idx2 = max(0, min(n - 1, idx2))
+        else:
+            idx2 = idx2 % n
+
+        effect.params[self.key] = idx2
+    
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)
         _, visual_rect, _ = self.split_tile(rect, theme)

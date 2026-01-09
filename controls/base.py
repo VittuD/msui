@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class Control:
     key: str
     label: str
+    clamp: bool = True   # NEW: True=clamp, False=wrap/rollover when applicable
 
     # Every control is a "tile": label top, visual middle, value bottom
     def render(self, canvas, rect, focused: bool, effect, theme):
@@ -15,10 +16,8 @@ class Control:
         return
 
     def value_text(self, effect) -> str:
-        v = effect.params.get(self.key, 0)
-        if isinstance(v, int):
-            return f"{v:03d}"
-        return str(v)
+        v = int(effect.params.get(self.key, 0))
+        return f"-{abs(v):03d}" if v < 0 else f"{v:03d}"
 
     # ---- shared tile helpers ----
     @staticmethod

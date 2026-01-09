@@ -9,23 +9,55 @@ class DialControl(Control):
     vmax: int = 100
     step: int = 1
 
+    def value_text(self, effect) -> str:
+        v = int(effect.params.get(self.key, 0))
+        if v < 0:
+            return f"-{abs(v):03d}"
+        return f"{v:03d}"
+
     def adjust(self, delta: int, effect):
         v = int(effect.params.get(self.key, 0))
         v += int(delta) * self.step
-        v = max(self.vmin, min(self.vmax, v))
+
+        if self.clamp:
+            v = max(self.vmin, min(self.vmax, v))
+        else:
+            # wrap within [vmin..vmax] inclusive
+            lo, hi = int(self.vmin), int(self.vmax)
+            if hi < lo:
+                lo, hi = hi, lo
+            span = (hi - lo) + 1
+            if span > 0:
+                v = lo + ((v - lo) % span)
+
         effect.params[self.key] = v
 
     def render(self, canvas, rect, focused: bool, effect, theme):
-        # Tile frame + label/value in consistent layout
         self.draw_tile_frame(canvas, rect, focused, theme)
         label_rect, visual_rect, value_rect = self.split_tile(rect, theme)
-
-        # Dial visual in middle
+    
         v = int(effect.params.get(self.key, 0))
         accent = theme.ACC_FOCUS if focused else theme.ACC_IDLE
         ring = theme.FG if focused else theme.DIM
-
-        draw_dial_visual(canvas, visual_rect, v, ring, accent, theme)
-
-        # Label + value text
-        self.draw_label_and_value(canvas, rect, focused, effect, theme)
+    
+        # Dial visual
+        draw_dial_visual(canvas, visual_rect, v, self.vmin, self.vmax, ring, accent, theme)
+    
+        # Label (top)
+        lx, ly, _, _ = label_rect
+        canvas.text(theme.FONT_S, lx, ly, self.label, ring)
+    
+        # Value (bottom): center the 3 digits always; draw '-' separately to the left
+        vx, vy, vw, vh = value_rect
+        digits = f"{abs(v):03d}"
+    
+        digits_w, _ = canvas.text_size(theme.FONT_M, digits)
+        digits_x = vx + (vw - digits_w) // 2
+    
+        canvas.text(theme.FONT_M, digits_x, vy, digits, ring)
+    
+        if v < 0:
+            minus_w, _ = canvas.text_size(theme.FONT_M, "-")
+            gap = 2  # pixels between '-' and digits
+            canvas.text(theme.FONT_M, digits_x - minus_w - gap, vy, "-", ring)
+    

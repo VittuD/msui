@@ -6,6 +6,7 @@ from msui.controls.dial import DialControl
 from msui.controls.button import ButtonControl
 from msui.controls.enumsel import EnumControl
 from msui.controls.switch import SwitchControl
+from msui.controls.text import TextControl
 from msui.render.theme import Theme
 from msui.render import icons as wave_icons
 from msui.render.screen_effect import render_effect_editor
@@ -18,24 +19,30 @@ from msui.core.events import (
 
 def build_demo_effect() -> Effect:
     params = {
-        "rate": 35,
-        "depth": 45,
-        "tone": 55,
-
-        "sync": False,
+        # MAIN
+        "rate": 0,          # signed dial demo (-12..+12)
         "mode": 0,
+        "sync": False,
 
+        # MOD
         "wave": 0,
         "filter": 0,
+        "tone": 55,
 
+        # LEVEL
         "pre": 10,
         "post": 70,
         "dry": 90,
+
+        # TUNE (new page)
+        "detune": 0,        # -12..+12
+        "bpm": 120,         # 30..300
+        "div": 2,           # enum index
     }
 
     pages = [
         Page("MAIN", [
-            DialControl(key="rate", label="RATE", vmin=0, vmax=100, step=1),
+            DialControl(key="rate", label="RATE", vmin=-12, vmax=12, step=1),
             SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),
             ButtonControl(key="sync", label="SYNC", true_text="ON", false_text="OFF"),
         ]),
@@ -66,15 +73,21 @@ def build_demo_effect() -> Effect:
             DialControl(key="post", label="POST", vmin=0, vmax=100, step=1),
             DialControl(key="dry", label="DRY", vmin=0, vmax=100, step=1),
         ]),
+        Page("TUNE", [
+            DialControl(key="detune", label="DETUNE", vmin=-12, vmax=12, step=1),
+            DialControl(key="bpm", label="BPM", vmin=30, vmax=300, step=1),
+            TextControl(
+                key="div",
+                label="DIV",
+                options=("1/1", "1/2", "1/4", "1/8", "1/16"),
+            ),
+        ]),
     ]
 
     return Effect(name="CHORUS", pages=pages, params=params)
 
 
 def apply_event(effect: Effect, event) -> tuple[bool, bool]:
-    """
-    Returns: (continue_running, did_state_change)
-    """
     t = event.type
 
     if t == QUIT:
@@ -105,7 +118,6 @@ def apply_event(effect: Effect, event) -> tuple[bool, bool]:
         before = effect.params.get(ctrl.key, None)
         ctrl.adjust(event.delta, effect)
         after = effect.params.get(ctrl.key, None)
-        # if control didn't change value, no need to redraw
         return True, (before != after)
 
     return True, False
@@ -138,19 +150,16 @@ def main():
     accum_render_s = 0.0
     accum_present_s = 0.0
 
-    # Force an initial render
     needs_redraw = True
     running = True
 
     while running:
-        clock.tick(theme.FPS)
+        dt_ms = clock.tick(theme.FPS)
         input_src.pump_pygame_events()
 
-        dt_ms = clock.tick(theme.FPS)
         events = input_src.get_events(dt_ms)
         events_total += len(events)
 
-        # Apply events; mark redraw if anything changed
         changed = False
         for ev in events:
             ok, did_change = apply_event(effect, ev)
@@ -163,29 +172,23 @@ def main():
         if changed:
             needs_redraw = True
 
-        # Only render + present when needed
         if needs_redraw:
-            t_r0 = time.perf_counter()
+            t0 = time.perf_counter()
             render_effect_editor(canvas, effect, theme)
-            t_r1 = time.perf_counter()
+            t1 = time.perf_counter()
 
-            scaled = pygame.transform.scale(
-                canvas.surface,
-                (theme.W * theme.SCALE, theme.H * theme.SCALE),
-            )
+            scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
             win.blit(scaled, (0, 0))
             pygame.display.flip()
-            t_r2 = time.perf_counter()
+            t2 = time.perf_counter()
 
             renders += 1
-            accum_render_s += (t_r1 - t_r0)
-            accum_present_s += (t_r2 - t_r1)
-
+            accum_render_s += (t1 - t0)
+            accum_present_s += (t2 - t1)
             needs_redraw = False
 
         loops += 1
 
-        # Print once/sec
         now = time.perf_counter()
         if now - last_print >= 1.0:
             avg_render_ms = (accum_render_s / max(1, renders)) * 1000.0

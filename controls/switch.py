@@ -25,7 +25,9 @@ class SwitchControl(Control):
     def _get_index(self, effect) -> int:
         n = self._n()
         idx = int(effect.params.get(self.key, 0))
-        return max(0, min(n - 1, idx))
+        if self.clamp:
+            return max(0, min(n - 1, idx))
+        return idx % n
 
     def value_text(self, effect) -> str:
         if not self.options:
@@ -33,23 +35,21 @@ class SwitchControl(Control):
         return self.options[self._get_index(effect)]
 
     def adjust(self, delta: int, effect):
-        """
-        Clamp (no wrap):
-          - UP should move toward A (top)
-          - DOWN should move toward C (bottom)
-
-        Global input sends UP = +1, DOWN = -1, so we invert delta here.
-        """
         if not self.options or delta == 0:
             return
 
         n = self._n()
         idx = self._get_index(effect)
 
-        idx = idx - int(delta)  # invert so UP goes toward 0 (A)
-        idx = max(0, min(n - 1, idx))
+        # UP should move toward A (top). Input sends UP=+ so invert.
+        idx2 = idx - int(delta)
 
-        effect.params[self.key] = idx
+        if self.clamp:
+            idx2 = max(0, min(n - 1, idx2))
+        else:
+            idx2 = idx2 % n
+
+        effect.params[self.key] = idx2
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)
