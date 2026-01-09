@@ -1,46 +1,19 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from msui.controls.base import Control
+from msui.controls.base import IndexedControl
 
 
 @dataclass
-class TextControl(Control):
+class TextControl(IndexedControl):
     """
     Big text control (encoder-cyclable).
     Stores an int index in effect.params[key], 0..N-1.
     Renders the selected option as big centered text in the visual region.
     """
     options: tuple[str, ...] = ("A", "B")
-
-    def _n(self) -> int:
-        return max(1, len(self.options))
-
-    def _get_index(self, effect) -> int:
-        if not self.options:
-            return 0
-        idx = int(effect.params.get(self.key, 0))
-        if self.clamp:
-            return max(0, min(len(self.options) - 1, idx))
-        return idx % len(self.options)
-    
-    def value_text(self, effect) -> str:
-        # bottom text: keep consistent; we’ll show same thing as big text
-        if not self.options:
-            return "---"
-        return self.options[self._get_index(effect)]
-
-    def adjust(self, delta: int, effect):
-        if not self.options or delta == 0:
-            return
-        n = len(self.options)
-        idx = self._get_index(effect)
-        idx2 = idx + int(delta)
-    
-        if self.clamp:
-            idx2 = max(0, min(n - 1, idx2))
-        else:
-            idx2 = idx2 % n
-    
-        effect.params[self.key] = idx2
+    empty_text: str = "---"
+    delta_sign: int = 1
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)

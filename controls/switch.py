@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Tuple
-from msui.controls.base import Control
+
+from msui.controls.base import IndexedControl
 
 
 @dataclass
-class SwitchControl(Control):
+class SwitchControl(IndexedControl):
     """
     2-3 way toggle switch (vertical silhouette).
     Stored as int index in effect.params[key]:
@@ -16,40 +19,13 @@ class SwitchControl(Control):
       A: lever+knob from top to socket
       B: socket only (double circle)
       C: vertical flip of A
+
+    NOTE: Direction behavior preserved:
+      UP(+delta) moves toward A (top) => index decreases.
     """
-    options: Tuple[str, ...] = ("A", "B", "C")  # 2 or 3 options recommended
-
-    def _n(self) -> int:
-        return max(1, len(self.options))
-
-    def _get_index(self, effect) -> int:
-        n = self._n()
-        idx = int(effect.params.get(self.key, 0))
-        if self.clamp:
-            return max(0, min(n - 1, idx))
-        return idx % n
-
-    def value_text(self, effect) -> str:
-        if not self.options:
-            return "-"
-        return self.options[self._get_index(effect)]
-
-    def adjust(self, delta: int, effect):
-        if not self.options or delta == 0:
-            return
-
-        n = self._n()
-        idx = self._get_index(effect)
-
-        # UP should move toward A (top). Input sends UP=+ so invert.
-        idx2 = idx - int(delta)
-
-        if self.clamp:
-            idx2 = max(0, min(n - 1, idx2))
-        else:
-            idx2 = idx2 % n
-
-        effect.params[self.key] = idx2
+    options: Tuple[str, ...] = ("A", "B", "C")
+    empty_text: str = "-"
+    delta_sign: int = -1  # IMPORTANT: invert UP/DOWN direction (matches previous behavior)
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)
