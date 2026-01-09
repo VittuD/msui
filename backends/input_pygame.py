@@ -1,14 +1,32 @@
-import pygame
+# backends/input_pygame.py
+from __future__ import annotations
+
 import time
-from msui.core.events import UIEvent, NAV_LEFT, NAV_RIGHT, PAGE_PREV, PAGE_NEXT, VALUE_DELTA, TOGGLE_BYPASS, QUIT
+import pygame
+
+from msui.backends.input import InputSource
+from msui.core.events import (
+    UIEvent,
+    NAV_LEFT,
+    NAV_RIGHT,
+    PAGE_PREV,
+    PAGE_NEXT,
+    VALUE_DELTA,
+    TOGGLE_BYPASS,
+    QUIT,
+)
 
 
 class AccelRepeater:
     """
     Fires immediately, then repeats after delay.
+
     For UP/DOWN: accelerates step sizes with hold duration.
     For others: accel=False keeps step=1.
+
+    Note: Uses wall time. (We can later refactor to dt_ms-based.)
     """
+
     def __init__(self, first_delay_ms=250, repeat_ms=60, accel=True):
         self.first_delay = first_delay_ms / 1000.0
         self.repeat = repeat_ms / 1000.0
@@ -19,9 +37,12 @@ class AccelRepeater:
     def step_for_hold(self, held_s: float) -> int:
         if not self.accel:
             return 1
-        if held_s < 0.6:  return 1
-        if held_s < 1.2:  return 2
-        if held_s < 2.0:  return 5
+        if held_s < 0.6:
+            return 1
+        if held_s < 1.2:
+            return 2
+        if held_s < 2.0:
+            return 5
         return 10
 
     def update(self, is_down: bool):
@@ -42,16 +63,19 @@ class AccelRepeater:
         return False, 0
 
 
-class PygameInput:
+class PygameInput(InputSource):
     """
     Pygame-based input handler with key repeat and acceleration.
-    Maps keys to UIEvents.
-    Keys mapped:
-        - LEFT/RIGHT: NAV_LEFT/NAV_RIGHT (repeat, no accel)
-        - A/D: PAGE_PREV/PAGE_NEXT (repeat, no accel)
-        - UP/DOWN: VALUE_DELTA (repeat, with accel)
-        - SPACE: TOGGLE_BYPASS (edge-triggered)
+    Implements the stable InputSource interface.
+
+    Stable API:
+      - pump()
+      - get_events(dt_ms)
+
+    Back-compat:
+      - pump_pygame_events() alias for pump()
     """
+
     def __init__(self, theme):
         fps = max(1.0, float(getattr(theme, "FPS", 60)))
 
@@ -67,22 +91,22 @@ class PygameInput:
             return max(1, int(1000.0 / hz))
 
         updown_ms = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_UPDOWN_RATIO", 1.0), max_hz=20.0)
-        nav_ms    = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_NAV_RATIO", 0.6),   max_hz=12.0)
-        page_ms   = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_PAGE_RATIO", 0.4),  max_hz=8.0)
+        nav_ms = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_NAV_RATIO", 0.6), max_hz=12.0)
+        page_ms = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_PAGE_RATIO", 0.4), max_hz=8.0)
 
-        self.rep_left  = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms,  accel=False)
-        self.rep_right = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms,  accel=False)
-        self.rep_a     = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
-        self.rep_d     = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
+        self.rep_left = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms, accel=False)
+        self.rep_right = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms, accel=False)
+        self.rep_a = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
+        self.rep_d = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
 
-        self.rep_up    = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
-        self.rep_down  = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
+        self.rep_up = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
+        self.rep_down = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
 
         self._quit = False
         self._toggle_bypass_pressed = False
 
-
-    def pump_pygame_events(self):
+    # --- stable interface ---
+    def pump(self) -> None:
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 self._quit = True
@@ -90,7 +114,14 @@ class PygameInput:
                 if ev.key == pygame.K_ESCAPE:
                     self._quit = True
 
+    # --- back-compat alias ---
+    def pump_pygame_events(self) -> None:
+        self.pump()
+
     def get_events(self, dt_ms: int):
+        # dt_ms reserved for future dt-based repeat refactor
+        _ = dt_ms
+
         if self._quit:
             return [UIEvent(QUIT)]
 
