@@ -2,9 +2,47 @@
 from __future__ import annotations
 
 import pygame
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
+from collections import OrderedDict
 
 from msui.backends.canvas import Canvas, Color, Point, Rect
+
+
+class _LRUCache:
+    """
+    Tiny LRU cache with a hard cap to avoid unbounded growth.
+    """
+    def __init__(self, capacity: int):
+        self.capacity = max(0, int(capacity))
+        self._od: "OrderedDict[object, object]" = OrderedDict()
+
+    def get(self, key):
+        if self.capacity <= 0:
+            return None
+        try:
+            val = self._od.pop(key)
+        except KeyError:
+            return None
+        # re-insert as most-recent
+        self._od[key] = val
+        return val
+
+    def put(self, key, val) -> None:
+        if self.capacity <= 0:
+            return
+        if key in self._od:
+            # refresh position
+            try:
+                self._od.pop(key)
+            except KeyError:
+                pass
+        self._od[key] = val
+        # evict least-recent
+        while len(self._od) > self.capacity:
+            self._od.popitem(last=False)
+
+    def clear(self) -> None:
+        self._od.clear()
 
 
 class PygameCanvas(Canvas):
@@ -13,15 +51,30 @@ class PygameCanvas(Canvas):
     Keeps pygame isolated here.
     """
 
-    def __init__(self, w: int, h: int, fonts: Dict[str, pygame.font.Font]):
+    def __init__(
+        self,
+        w: int,
+        h: int,
+        fonts: Dict[str, pygame.font.Font],
+        *,
+        text_cache_max: int = 512,
+        size_cache_max: int = 1024,
+    ):
         self.w = int(w)
         self.h = int(h)
         self.surface = pygame.Surface((self.w, self.h))
         self.fonts = fonts
 
-        # Cache rendered text surfaces and text sizes
-        self._text_cache: dict[tuple[str, str, Color], pygame.Surface] = {}
-        self._size_cache: dict[tuple[str, str], Tuple[int, int]] = {}
+        # Bounded caches (memory safe)
+        self._text_cache = _LRUCache(text_cache_max)
+        self._size_cache = _LRUCache(size_cache_max)
+
+    def clear_caches(self) -> None:
+        """
+        Call this if fonts/theme are swapped at runtime.
+        """
+        self._text_cache.clear()
+        self._size_cache.clear()
 
     def fill(self, color: Color) -> None:
         self.surface.fill(color)
@@ -82,19 +135,21 @@ class PygameCanvas(Canvas):
         )
 
     def text(self, font_key: str, x: int, y: int, s: str, color: Color) -> None:
+        # Cache rendered surface (bounded LRU)
         key = (font_key, s, color)
         img = self._text_cache.get(key)
         if img is None:
             font = self.fonts[font_key]
             img = font.render(s, True, color)
-            self._text_cache[key] = img
+            self._text_cache.put(key, img)
         self.surface.blit(img, (int(x), int(y)))
 
     def text_size(self, font_key: str, s: str) -> Tuple[int, int]:
+        # Cache font.size results (bounded LRU)
         key = (font_key, s)
         v = self._size_cache.get(key)
         if v is None:
             font = self.fonts[font_key]
             v = font.size(s)
-            self._size_cache[key] = v
+            self._size_cache.put(key, v)
         return v
