@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from msui.core.model import Effect
 from msui.render.theme import Theme
 from msui.render.icon import Icon
 from msui.render import icons as ico
+from msui.render.layout import header_rect, badge_geometry, page_slots_pos, tile_rects
 
 ICON_ACTIVE = Icon(ico.badge_active)
 ICON_BYPASS = Icon(ico.badge_bypass)
@@ -62,56 +65,52 @@ def draw_page_slots(canvas, x, y, n_pages: int, page_index: int, theme):
 def render_effect_editor(canvas, effect: Effect, theme: Theme):
     canvas.fill(theme.BG)
 
+    # ----------------
     # Header bar
-    hx, hy = theme.HEADER_X, theme.HEADER_Y
-    hw, hh = theme.W - 2 * theme.HEADER_X, theme.HEADER_H
-    canvas.round_rect((hx, hy, hw, hh), theme.HEADER_RADIUS, theme.HDR, fill=True)
+    # ----------------
+    hr = header_rect(theme)
+    hx, hy, hw, hh = hr
+    canvas.round_rect(hr, theme.HEADER_RADIUS, theme.HDR, fill=True)
     canvas.text(theme.FONT_L, hx + 10, hy + 6, effect.name, theme.FG)
 
+    # ----------------
     # Badge (Icon + text, monochrome)
+    # ----------------
     badge_text = "ACTIVE" if effect.enabled else "BYPASS"
     badge_icon = ICON_ACTIVE if effect.enabled else ICON_BYPASS
 
     tw, _ = canvas.text_size(theme.FONT_S, badge_text)
     icon_h = theme.BADGE_H - 8
     icon_w = icon_h + 6
-    gap = 8
 
-    bw = tw + theme.BADGE_PAD_X * 2 + icon_w + gap
-    bx = hx + hw - bw - 6
-    by = hy + (hh - theme.BADGE_H) // 2
+    geo = badge_geometry(theme, hr, tw, icon_h=icon_h, icon_w=icon_w)
+    br = geo["badge_rect"]
+    ir = geo["icon_rect"]
+    tx, ty = geo["text_pos"]
 
     # pill background
-    canvas.round_rect((bx, by, bw, theme.BADGE_H), theme.BADGE_RADIUS, theme.HDR, fill=True)
+    canvas.round_rect(br, theme.BADGE_RADIUS, theme.HDR, fill=True)
 
     # pill outline: WHITE if active, GREY if bypass
     outline = theme.FG if effect.enabled else theme.DIM
-    canvas.round_rect((bx, by, bw, theme.BADGE_H), theme.BADGE_RADIUS, outline, fill=False, width=2)
+    canvas.round_rect(br, theme.BADGE_RADIUS, outline, fill=False, width=2)
 
     col = theme.FG if effect.enabled else theme.DIM
+    badge_icon.draw(canvas, ir, col, theme)
+    canvas.text(theme.FONT_S, tx, ty, badge_text, col)
 
-    ix = bx + theme.BADGE_PAD_X
-    iy = by + (theme.BADGE_H - icon_h) // 2
-    badge_icon.draw(canvas, (ix, iy, icon_w, icon_h), col, theme)
-
-    tx = ix + icon_w + gap
-    canvas.text(theme.FONT_S, tx, by + 6, badge_text, col)
-
+    # ----------------
     # Page slots (MS-70CDR style)
-    px = theme.HEADER_X
-    py = theme.PAGEBOX_Y
+    # ----------------
+    px, py = page_slots_pos(theme)
     draw_page_slots(canvas, px, py, len(effect.pages), effect.page_index, theme)
 
+    # ----------------
     # Tiles row
+    # ----------------
     page = effect.current_page()
+    rects = tile_rects(theme)
 
-    total_w = theme.TILE_W * 3 + theme.TILE_GAP * 2
-    start_x = (theme.W - total_w) // 2
-    y0 = theme.TILES_Y
-
-    for i in range(3):
-        x0 = start_x + i * (theme.TILE_W + theme.TILE_GAP)
-        rect = (x0, y0, theme.TILE_W, theme.TILE_H)
+    for i, rect in enumerate(rects):
         focused = (i == effect.control_index)
         page.controls[i].render(canvas, rect, focused, effect, theme)
-
