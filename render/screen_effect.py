@@ -78,11 +78,9 @@ def _render_header_and_badge(canvas, effect: Effect, theme: Theme) -> None:
     hr = header_rect(theme)
     hx, hy, hw, hh = hr
 
-    # header background
     canvas.round_rect(hr, theme.HEADER_RADIUS, theme.HDR, fill=True)
     canvas.text(theme.FONT_L, hx + 10, hy + 6, effect.name, theme.FG)
 
-    # badge
     badge_text = "ACTIVE" if effect.enabled else "BYPASS"
     badge_icon = ICON_ACTIVE if effect.enabled else ICON_BYPASS
 
@@ -106,7 +104,6 @@ def _render_header_and_badge(canvas, effect: Effect, theme: Theme) -> None:
 
 
 def _render_page_slots(canvas, effect: Effect, theme: Theme) -> None:
-    # clear the whole "page slots row" region (safe & simple)
     px, py = page_slots_pos(theme)
     clear_r = (theme.HEADER_X, py, theme.W - 2 * theme.HEADER_X, theme.PAGEBOX_H)
     _fill_rect(canvas, clear_r, theme.BG)
@@ -114,14 +111,39 @@ def _render_page_slots(canvas, effect: Effect, theme: Theme) -> None:
     draw_page_slots(canvas, px, py, len(effect.pages), effect.page_index, theme)
 
 
+def _render_empty_tile(canvas, rect, theme: Theme) -> None:
+    """
+    Draw a subtle placeholder for missing tiles (pages with < 3 controls).
+    Keeps layout stable without implying focus.
+    """
+    x, y, w, h = rect
+
+    # subtle outline only (very dim)
+    canvas.round_rect((x, y, w, h), theme.TILE_RADIUS, theme.DIM, fill=False, width=1)
+
+    # small centered marker
+    s = "---"
+    tw, th = canvas.text_size(theme.FONT_M, s)
+    canvas.text(
+        theme.FONT_M,
+        x + (w - tw) // 2,
+        y + (h - th) // 2,
+        s,
+        theme.DIM,
+    )
+
+
 def _render_tile(canvas, effect: Effect, theme: Theme, tile_i: int) -> None:
     rects = tile_rects(theme)
     rect = rects[tile_i]
 
-    # clear tile area
     _fill_rect(canvas, rect, theme.BG)
 
     page = effect.current_page()
+    if tile_i >= len(page.controls):
+        _render_empty_tile(canvas, rect, theme)
+        return
+
     focused = (tile_i == effect.control_index)
     page.controls[tile_i].render(canvas, rect, focused, effect, theme)
 
@@ -147,7 +169,7 @@ def render_effect_editor(canvas, effect: Effect, theme: Theme, dirty_mask: int =
       - DIRTY_ALL: full redraw (clears screen)
       - DIRTY_HEADER: redraw header+badge
       - DIRTY_PAGE: redraw page slots
-      - DIRTY_TILES: redraw all tiles
+      - DIRTY_TILES: redraw all tiles (and empty placeholders)
       - DIRTY_TILE0/1/2: redraw individual tiles
     """
     if dirty_mask == DIRTY_NONE:
@@ -160,15 +182,12 @@ def render_effect_editor(canvas, effect: Effect, theme: Theme, dirty_mask: int =
         _render_tiles(canvas, effect, theme, DIRTY_TILES)
         return
 
-    # HEADER area
     if dirty_mask & DIRTY_HEADER:
         hr = header_rect(theme)
         _fill_rect(canvas, hr, theme.BG)
         _render_header_and_badge(canvas, effect, theme)
 
-    # PAGE slots
     if dirty_mask & DIRTY_PAGE:
         _render_page_slots(canvas, effect, theme)
 
-    # TILES
     _render_tiles(canvas, effect, theme, dirty_mask)

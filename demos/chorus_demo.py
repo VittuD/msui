@@ -32,34 +32,30 @@ from msui.core.profiler import Profiler
 
 def build_demo_effect() -> Effect:
     params = {
-        # MAIN
         "rate": 0,
         "mode": 0,
         "sync": False,
 
-        # MOD
         "wave": 0,
         "filter": 0,
         "tone": 55,
 
-        # LEVEL
         "pre": 10,
         "post": 70,
         "dry": 90,
 
-        # TUNE
         "detune": 0,
         "bpm": 120,
         "div": 2,
     }
 
     pages = [
-        Page("MAIN", [
+        Page("MAIN", (
             DialControl(key="rate", label="RATE", vmin=-12, vmax=12, step=1),
             SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),
             ButtonControl(key="sync", label="SYNC", true_text="ON", false_text="OFF"),
-        ]),
-        Page("MOD", [
+        )),
+        Page("MOD", (
             EnumControl(
                 key="wave",
                 label="WAVE",
@@ -80,21 +76,17 @@ def build_demo_effect() -> Effect:
                 ),
             ),
             DialControl(key="tone", label="TONE", vmin=0, vmax=100, step=1),
-        ]),
-        Page("LEVEL", [
+        )),
+        Page("LEVEL", (
             DialControl(key="pre", label="PRE", vmin=0, vmax=100, step=1),
             DialControl(key="post", label="POST", vmin=0, vmax=100, step=1),
             DialControl(key="dry", label="DRY", vmin=0, vmax=100, step=1),
-        ]),
-        Page("TUNE", [
+        )),
+        Page("TUNE", (
             DialControl(key="detune", label="DETUNE", vmin=-12, vmax=12, step=1),
             DialControl(key="bpm", label="BPM", vmin=30, vmax=300, step=1),
-            TextControl(
-                key="div",
-                label="DIV",
-                options=("1/1", "1/2", "1/4", "1/8", "1/16"),
-            ),
-        ]),
+            TextControl(key="div", label="DIV", options=("1/1", "1/2", "1/4", "1/8", "1/16")),
+        )),
     ]
 
     return Effect(name="CHORUS", pages=pages, params=params)
@@ -105,9 +97,6 @@ def _tile_bit(i: int) -> int:
 
 
 def apply_event(effect: Effect, event) -> tuple[bool, int]:
-    """
-    Returns (running_ok, dirty_mask).
-    """
     t = event.type
 
     if t == QUIT:
@@ -118,23 +107,27 @@ def apply_event(effect: Effect, event) -> tuple[bool, int]:
         return True, DIRTY_HEADER
 
     if t == NAV_LEFT:
+        n = effect.n_controls()
         old = effect.control_index
-        effect.control_index = (effect.control_index - 1) % 3
+        effect.control_index = (effect.control_index - 1) % n
         new = effect.control_index
         return True, (_tile_bit(old) | _tile_bit(new))
 
     if t == NAV_RIGHT:
+        n = effect.n_controls()
         old = effect.control_index
-        effect.control_index = (effect.control_index + 1) % 3
+        effect.control_index = (effect.control_index + 1) % n
         new = effect.control_index
         return True, (_tile_bit(old) | _tile_bit(new))
 
     if t == PAGE_PREV:
         effect.page_index = (effect.page_index - 1) % len(effect.pages)
+        effect.control_index %= effect.n_controls()
         return True, (DIRTY_PAGE | DIRTY_TILES)
 
     if t == PAGE_NEXT:
         effect.page_index = (effect.page_index + 1) % len(effect.pages)
+        effect.control_index %= effect.n_controls()
         return True, (DIRTY_PAGE | DIRTY_TILES)
 
     if t == VALUE_DELTA:
