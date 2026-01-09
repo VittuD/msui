@@ -1,25 +1,18 @@
 import math
-import math
 from dataclasses import dataclass
 
-### UTILS ###
-
-from dataclasses import dataclass
-import math
-import warnings
+# --------------------
+# Mirror utility
+# --------------------
 
 @dataclass
 class _MirrorCanvas:
     base: object
     rect: tuple  # (x, y, w, h)
-    flip_h: bool         # top<->bottom requested
+    flip_h: bool         # top<->bottom
     flip_v: bool         # left<->right
-    h_mode: str = "literal"   # "literal" | "below_zero"
-    below_shift: float = 0.75   # fraction of half-height
-
-    def _zero_y(self):
-        x0, y0, w, h = self.rect
-        return y0 + h // 2
+    h_mode: str = "literal"      # "literal" | "below_zero"
+    below_shift: float = 0.65    # fraction of half-height (only for below_zero)
 
     def _map_point(self, p):
         x0, y0, w, h = self.rect
@@ -27,29 +20,25 @@ class _MirrorCanvas:
         lx = x - x0
         ly = y - y0
 
-        # Vertical mirror (left<->right)
+        # left<->right
         if self.flip_v:
             lx = (w - 1) - lx
-            
-            if self.h_mode == "below_zero":
-                warnings.warn("h_mode 'below_zero' is not applicable for vertical flip", ResourceWarning)
 
-        # Horizontal mirror (top<->bottom) can be literal OR "below_zero"
+        # top<->bottom
         if self.flip_h:
-            # 1) Always do a literal flip first
-            ly = (h - 1) - ly
-
-            if self.h_mode == "below_zero":
+            if self.h_mode == "literal":
+                ly = (h - 1) - ly
+            elif self.h_mode == "below_zero":
+                # 1) mirror
+                ly = (h - 1) - ly
+                # 2) shift into bottom half, then clamp
                 half = h // 2
                 shift = int(half * self.below_shift)
                 ly = ly + shift
-
-                # clamp to bottom half
                 if ly < half:
                     ly = half
                 if ly > (h - 1):
                     ly = h - 1
-
             else:
                 raise ValueError(f"Unknown h_mode: {self.h_mode}")
 
@@ -65,7 +54,6 @@ class _MirrorCanvas:
         nh = abs(p2[1] - p1[1])
         return (nx, ny, nw, nh)
 
-    # --- transformed drawing methods used by icons ---
     def line(self, p1, p2, color, width=1):
         return self.base.line(self._map_point(p1), self._map_point(p2), color, width=width)
 
@@ -76,43 +64,31 @@ class _MirrorCanvas:
         return self.base.round_rect(self._map_rect(rect), radius, color, fill=fill, width=width)
 
     def arc(self, rect, start_rad, end_rad, color, width=1):
-        """
-        Mirroring arcs flips angle orientation.
-        NOTE: 'below_zero' folding is non-linear; arc mirroring there is approximate.
-        For icons, try to prefer polylines/curves over arcs if using below_zero.
-        """
+        # best-effort for literal mirror only; prefer polylines in icons
         r2 = self._map_rect(rect)
 
         def map_ang(a):
-            # literal transforms (best-effort)
             if self.flip_h and self.h_mode == "literal":
                 a = -a
             if self.flip_v:
                 a = math.pi - a
             return a
 
-        s2 = map_ang(start_rad)
-        e2 = map_ang(end_rad)
-        return self.base.arc(r2, s2, e2, color, width=width)
+        return self.base.arc(r2, map_ang(start_rad), map_ang(end_rad), color, width=width)
 
-    # Forward everything else unchanged (fill, text, etc.)
     def __getattr__(self, name):
         return getattr(self.base, name)
 
 
-def mirror(icon_fn, flip="horizontal", h_mode="literal"):
+def mirror(icon_fn, flip="horizontal", h_mode="literal", below_shift=0.65):
     """
-    Returns a new icon function that mirrors `icon_fn` inside its rect.
-
     flip:
       - "horizontal": top<->bottom
       - "vertical":   left<->right
       - "both":       both flips
-      - ("horizontal","vertical"): also supported
-
-    h_mode:
-      - "literal": normal horizontal mirror across the whole rect
-      - "below_zero": fold result so it stays below the 0 dB line (rect midline)
+    h_mode (only affects horizontal flip):
+      - "literal"
+      - "below_zero": mirror then shift into bottom half
     """
     if isinstance(flip, (tuple, list)):
         flip_h = "horizontal" in flip
@@ -122,11 +98,19 @@ def mirror(icon_fn, flip="horizontal", h_mode="literal"):
         flip_v = flip in ("vertical", "both")
 
     def wrapped(canvas, rect, color, theme):
-        mc = _MirrorCanvas(canvas, rect, flip_h=flip_h, flip_v=flip_v, h_mode=h_mode)
+        mc = _MirrorCanvas(
+            canvas, rect,
+            flip_h=flip_h, flip_v=flip_v,
+            h_mode=h_mode, below_shift=below_shift
+        )
         return icon_fn(mc, rect, color, theme)
 
     return wrapped
 
+
+# --------------------
+# Drawing helpers
+# --------------------
 
 def _pad_rect(rect, pad):
     x, y, w, h = rect
@@ -136,14 +120,7 @@ def _polyline(canvas, pts, color, width=2):
     for i in range(len(pts) - 1):
         canvas.line(pts[i], pts[i + 1], color, width=width)
 
-def _bezier2(p0, p1, p2, t):
-    # quadratic bezier
-    x = (1-t)*(1-t)*p0[0] + 2*(1-t)*t*p1[0] + t*t*p2[0]
-    y = (1-t)*(1-t)*p0[1] + 2*(1-t)*t*p1[1] + t*t*p2[1]
-    return (int(x), int(y))
-
 def _bezier3(p0, p1, p2, p3, t):
-    # cubic bezier
     u = 1 - t
     x = (u*u*u)*p0[0] + 3*(u*u)*t*p1[0] + 3*u*(t*t)*p2[0] + (t*t*t)*p3[0]
     y = (u*u*u)*p0[1] + 3*(u*u)*t*p1[1] + 3*u*(t*t)*p2[1] + (t*t*t)*p3[1]
@@ -152,6 +129,66 @@ def _bezier3(p0, p1, p2, p3, t):
 def _draw_cubic(canvas, p0, p1, p2, p3, color, width=3, steps=24):
     pts = [_bezier3(p0, p1, p2, p3, i/(steps-1)) for i in range(steps)]
     _polyline(canvas, pts, color, width=width)
+
+
+### MAIN UI ICONS ###
+
+def badge_active(canvas, rect, color, theme):
+    # IN jack -> pedal -> OUT jack (straight through)
+    x, y, w, h = _pad_rect(rect, 1)
+    mid = y + h // 2
+
+    jack_r = 2
+    lx = x + 3
+    rx = x + w - 4
+
+    # jacks
+    canvas.circle((lx, mid), jack_r, color, width=0)
+    canvas.circle((rx, mid), jack_r, color, width=0)
+
+    # pedal body
+    ped_w = max(10, int(w * 0.45))
+    ped_h = max(8, int(h * 0.70))
+    px = x + (w - ped_w) // 2
+    py = y + (h - ped_h) // 2
+    canvas.round_rect((px, py, ped_w, ped_h), radius=4, color=color, fill=False, width=2)
+
+    # little footswitch dot inside pedal
+    canvas.circle((px + ped_w // 2, py + int(ped_h * 0.65)), 2, color, width=0)
+
+    # through line
+    canvas.line((lx + jack_r + 1, mid), (px, mid), color, width=2)
+    canvas.line((px + ped_w, mid), (rx - jack_r - 1, mid), color, width=2)
+    canvas.line((px + 3, mid), (px + ped_w - 3, mid), color, width=2)
+
+
+def badge_bypass(canvas, rect, color, theme):
+    # IN jack -> bypass loop around the pedal -> OUT jack
+    x, y, w, h = _pad_rect(rect, 1)
+    mid = y + h // 2
+
+    jack_r = 2
+    lx = x + 3
+    rx = x + w - 4
+
+    # jacks
+    canvas.circle((lx, mid), jack_r, color, width=0)
+    canvas.circle((rx, mid), jack_r, color, width=0)
+
+    # pedal body (still shown, but not in the path)
+    ped_w = max(10, int(w * 0.45))
+    ped_h = max(8, int(h * 0.70))
+    px = x + (w - ped_w) // 2
+    py = y + (h - ped_h) // 2
+    canvas.round_rect((px, py, ped_w, ped_h), radius=4, color=color, fill=False, width=2)
+
+    # bypass line goes UNDER the pedal (more "patch cable" vibe than going over)
+    by = min(y + h - 3, py + ped_h + 2)
+
+    # down from left jack, across, up to right jack
+    canvas.line((lx + jack_r + 1, mid), (lx + jack_r + 1, by), color, width=2)
+    canvas.line((lx + jack_r + 1, by), (rx - jack_r - 1, by), color, width=2)
+    canvas.line((rx - jack_r - 1, by), (rx - jack_r - 1, mid), color, width=2)
 
 
 ### WAVEFORM ICONS ###

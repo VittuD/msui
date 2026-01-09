@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
-from msui.controls.base import Control
+from typing import Optional, Tuple, Union, Callable
 
-IconFn = Callable[[object, tuple, tuple, object], None]
-# signature: icon(canvas, rect, color, theme)
+from msui.controls.base import Control
+from msui.render.icon import Icon, IconFn
+
+IconLike = Union[Icon, IconFn]
 
 @dataclass
 class EnumControl(Control):
@@ -15,7 +16,7 @@ class EnumControl(Control):
     - icons: tuple of functions, one per option: icon(canvas, rect, color, theme)
     """
     options: Tuple[str, ...] = ("A", "B", "C")
-    icons: Optional[Tuple[IconFn, ...]] = None
+    icons: Optional[Tuple[IconLike, ...]] = None
 
     def _n(self):
         return max(1, len(self.options))
@@ -53,8 +54,11 @@ class EnumControl(Control):
 
         # draw icon if provided and valid
         if self.icons and len(self.icons) == len(self.options):
-            icon_fn = self.icons[idx]
-            icon_fn(canvas, visual_rect, accent, theme)
+            icon_obj = self.icons[idx]
+            if isinstance(icon_obj, Icon):
+                icon_obj.draw(canvas, visual_rect, accent, theme)
+            else:
+                icon_obj(canvas, visual_rect, accent, theme)
         else:
             # fallback: show a simple marker box if icons missing
             bw = int(vw * 0.55)
