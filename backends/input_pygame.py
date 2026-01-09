@@ -1,7 +1,6 @@
 # backends/input_pygame.py
 from __future__ import annotations
 
-import time
 import pygame
 
 from msui.backends.input import InputSource
@@ -19,20 +18,24 @@ from msui.core.events import (
 
 class AccelRepeater:
     """
-    Fires immediately, then repeats after delay.
+    Deterministic (dt-based) key repeater.
 
-    For UP/DOWN: accelerates step sizes with hold duration.
-    For others: accel=False keeps step=1.
+    - Fires immediately on press.
+    - Then repeats after first_delay, at repeat interval.
+    - Optional acceleration for UP/DOWN via step_for_hold(held_s).
 
-    Note: Uses wall time. (We can later refactor to dt_ms-based.)
+    This avoids dependence on wall clock jitter and behaves consistently
+    across machines/fps hiccups as long as dt_ms is provided.
     """
 
     def __init__(self, first_delay_ms=250, repeat_ms=60, accel=True):
-        self.first_delay = first_delay_ms / 1000.0
-        self.repeat = repeat_ms / 1000.0
-        self.accel = accel
-        self.down_since = None
-        self.last_fire = None
+        self.first_delay_s = max(0.0, first_delay_ms / 1000.0)
+        self.repeat_s = max(0.001, repeat_ms / 1000.0)
+        self.accel = bool(accel)
+
+        self._was_down = False
+        self._held_s = 0.0
+        self._since_fire_s = 0.0
 
     def step_for_hold(self, held_s: float) -> int:
         if not self.accel:
@@ -45,27 +48,41 @@ class AccelRepeater:
             return 5
         return 10
 
-    def update(self, is_down: bool):
-        now = time.time()
-        if is_down:
-            if self.down_since is None:
-                self.down_since = now
-                self.last_fire = now
-                return True, 1
-            held = now - self.down_since
-            if held >= self.first_delay and (now - self.last_fire) >= self.repeat:
-                self.last_fire = now
-                return True, self.step_for_hold(held)
+    def reset(self) -> None:
+        self._was_down = False
+        self._held_s = 0.0
+        self._since_fire_s = 0.0
+
+    def update(self, is_down: bool, dt_s: float) -> tuple[bool, int]:
+        dt_s = max(0.0, float(dt_s))
+
+        if not is_down:
+            self.reset()
             return False, 0
 
-        self.down_since = None
-        self.last_fire = None
+        # down
+        if not self._was_down:
+            # edge: fire immediately
+            self._was_down = True
+            self._held_s = 0.0
+            self._since_fire_s = 0.0
+            return True, 1
+
+        # held
+        self._held_s += dt_s
+        self._since_fire_s += dt_s
+
+        if self._held_s >= self.first_delay_s and self._since_fire_s >= self.repeat_s:
+            # Fire at most once per frame to keep event rates stable.
+            self._since_fire_s = 0.0
+            return True, self.step_for_hold(self._held_s)
+
         return False, 0
 
 
 class PygameInput(InputSource):
     """
-    Pygame-based input handler with key repeat and acceleration.
+    Pygame-based input handler with deterministic dt-based repeat + acceleration.
     Implements the stable InputSource interface.
 
     Stable API:
@@ -85,9 +102,8 @@ class PygameInput(InputSource):
             hz = fps * max(0.0, float(ratio))
             if max_hz is not None:
                 hz = min(hz, max_hz)
-            # if ratio==0 -> "never repeat": set a huge interval
             if hz <= 0.0:
-                return 10**9
+                return 10**9  # effectively never
             return max(1, int(1000.0 / hz))
 
         updown_ms = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_UPDOWN_RATIO", 1.0), max_hz=20.0)
@@ -119,12 +135,10 @@ class PygameInput(InputSource):
         self.pump()
 
     def get_events(self, dt_ms: int):
-        # dt_ms reserved for future dt-based repeat refactor
-        _ = dt_ms
-
         if self._quit:
             return [UIEvent(QUIT)]
 
+        dt_s = max(0.0, float(dt_ms)) / 1000.0
         events = []
         keys = pygame.key.get_pressed()
 
@@ -136,29 +150,29 @@ class PygameInput(InputSource):
         else:
             self._toggle_bypass_pressed = False
 
-        fired, _ = self.rep_left.update(keys[pygame.K_LEFT])
+        fired, _ = self.rep_left.update(keys[pygame.K_LEFT], dt_s)
         if fired:
             events.append(UIEvent(NAV_LEFT))
 
-        fired, _ = self.rep_right.update(keys[pygame.K_RIGHT])
+        fired, _ = self.rep_right.update(keys[pygame.K_RIGHT], dt_s)
         if fired:
             events.append(UIEvent(NAV_RIGHT))
 
-        fired, _ = self.rep_a.update(keys[pygame.K_a])
+        fired, _ = self.rep_a.update(keys[pygame.K_a], dt_s)
         if fired:
             events.append(UIEvent(PAGE_PREV))
 
-        fired, _ = self.rep_d.update(keys[pygame.K_d])
+        fired, _ = self.rep_d.update(keys[pygame.K_d], dt_s)
         if fired:
             events.append(UIEvent(PAGE_NEXT))
 
         # UP: +delta
-        fired, step = self.rep_up.update(keys[pygame.K_UP])
+        fired, step = self.rep_up.update(keys[pygame.K_UP], dt_s)
         if fired:
             events.append(UIEvent(VALUE_DELTA, delta=step))
 
         # DOWN: -delta
-        fired, step = self.rep_down.update(keys[pygame.K_DOWN])
+        fired, step = self.rep_down.update(keys[pygame.K_DOWN], dt_s)
         if fired:
             events.append(UIEvent(VALUE_DELTA, delta=-step))
 

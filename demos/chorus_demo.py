@@ -27,6 +27,7 @@ from msui.core.dirty import (
     DIRTY_TILE1,
     DIRTY_TILE2,
 )
+from msui.core.profiler import Profiler
 
 
 def build_demo_effect() -> Effect:
@@ -120,7 +121,6 @@ def apply_event(effect: Effect, event) -> tuple[bool, int]:
         old = effect.control_index
         effect.control_index = (effect.control_index - 1) % 3
         new = effect.control_index
-        # focus frame changes on two tiles
         return True, (_tile_bit(old) | _tile_bit(new))
 
     if t == NAV_RIGHT:
@@ -131,7 +131,6 @@ def apply_event(effect: Effect, event) -> tuple[bool, int]:
 
     if t == PAGE_PREV:
         effect.page_index = (effect.page_index - 1) % len(effect.pages)
-        # page indicator + all tiles change
         return True, (DIRTY_PAGE | DIRTY_TILES)
 
     if t == PAGE_NEXT:
@@ -170,25 +169,17 @@ def main():
 
     effect = build_demo_effect()
 
-    # profiling counters
-    last_print = time.perf_counter()
-    loops = 0
-    renders = 0
-    events_total = 0
-    accum_render_s = 0.0
-    accum_present_s = 0.0
+    prof = Profiler(print_interval_s=1.0)
 
     dirty = DIRTY_ALL
     running = True
 
     while running:
         dt_ms = clock.tick(theme.FPS)
-
-        # stable input API (pump); back-compat still works too
         input_src.pump()
 
         events = input_src.get_events(dt_ms)
-        events_total += len(events)
+        prof.add_events(len(events))
 
         for ev in events:
             ok, d = apply_event(effect, ev)
@@ -207,29 +198,13 @@ def main():
             pygame.display.flip()
             t2 = time.perf_counter()
 
-            renders += 1
-            accum_render_s += (t1 - t0)
-            accum_present_s += (t2 - t1)
-
+            prof.add_render(t1 - t0, t2 - t1)
             dirty = DIRTY_NONE
 
-        loops += 1
-
-        now = time.perf_counter()
-        if now - last_print >= 1.0:
-            avg_render_ms = (accum_render_s / max(1, renders)) * 1000.0
-            avg_present_ms = (accum_present_s / max(1, renders)) * 1000.0
-            print(
-                f"loops={loops:4d}/s  renders={renders:4d}/s  events={events_total:4d}/s  "
-                f"avg_render_ms={avg_render_ms:6.2f}  avg_present_ms={avg_present_ms:6.2f}"
-            )
-
-            last_print = now
-            loops = 0
-            renders = 0
-            events_total = 0
-            accum_render_s = 0.0
-            accum_present_s = 0.0
+        prof.tick_loop()
+        line = prof.maybe_report()
+        if line:
+            print(line)
 
     pygame.quit()
 
