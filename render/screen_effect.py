@@ -10,10 +10,6 @@ ICON_BYPASS = Icon(ico.badge_bypass)
 def render_effect_editor(canvas, effect: Effect, theme: Theme):
     canvas.fill(theme.BG)
 
-    # Whole screen border: WHITE if active, GREY if bypass
-    screen_border = theme.FG if effect.enabled else theme.DIM
-    canvas.round_rect((0, 0, theme.W, theme.H), radius=0, color=screen_border, fill=False, width=2)
-
     # Header bar
     hx, hy = theme.HEADER_X, theme.HEADER_Y
     hw, hh = theme.W - 2 * theme.HEADER_X, theme.HEADER_H
@@ -26,7 +22,7 @@ def render_effect_editor(canvas, effect: Effect, theme: Theme):
 
     tw, _ = canvas.text_size(theme.FONT_S, badge_text)
     icon_h = theme.BADGE_H - 8
-    icon_w = icon_h + 12
+    icon_w = icon_h + 6
     gap = 8
 
     bw = tw + theme.BADGE_PAD_X * 2 + icon_w + gap

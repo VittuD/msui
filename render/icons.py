@@ -130,65 +130,69 @@ def _draw_cubic(canvas, p0, p1, p2, p3, color, width=3, steps=24):
     pts = [_bezier3(p0, p1, p2, p3, i/(steps-1)) for i in range(steps)]
     _polyline(canvas, pts, color, width=width)
 
+def _arrow(canvas, x1, y1, x2, y2, color, w=2):
+    canvas.line((x1, y1), (x2, y2), color, width=w)
+    # small arrow head
+    dx = x2 - x1
+    dy = y2 - y1
+    # normalize-ish for tiny head
+    if abs(dx) + abs(dy) == 0:
+        return
+    # head size
+    hs = 4
+    # perpendicular
+    px, py = -dy, dx
+    # clamp for tiny icons
+    if px > 0: px = 1
+    if px < 0: px = -1
+    if py > 0: py = 1
+    if py < 0: py = -1
+    canvas.line((x2, y2), (x2 - 2 - px*hs//2, y2 - py*hs//2), color, width=w)
+    canvas.line((x2, y2), (x2 - 2 + px*hs//2, y2 + py*hs//2), color, width=w)
 
-### MAIN UI ICONS ###
+
+### BADGE ICONS ###
 
 def badge_active(canvas, rect, color, theme):
-    # IN jack -> pedal -> OUT jack (straight through)
+    # Simple stompbox glyph
     x, y, w, h = _pad_rect(rect, 1)
-    mid = y + h // 2
 
-    jack_r = 2
-    lx = x + 3
-    rx = x + w - 4
+    pw = max(14, int(w * 0.70))
+    ph = max(10, int(h * 0.80))
+    px = x + (w - pw) // 2
+    py = y + (h - ph) // 2
 
-    # jacks
-    canvas.circle((lx, mid), jack_r, color, width=0)
-    canvas.circle((rx, mid), jack_r, color, width=0)
+    # pedal outline
+    canvas.round_rect((px, py, pw, ph), radius=4, color=color, fill=False, width=2)
 
-    # pedal body
-    ped_w = max(10, int(w * 0.45))
-    ped_h = max(8, int(h * 0.70))
-    px = x + (w - ped_w) // 2
-    py = y + (h - ped_h) // 2
-    canvas.round_rect((px, py, ped_w, ped_h), radius=4, color=color, fill=False, width=2)
+    # two knobs
+    canvas.circle((px + int(pw * 0.30), py + int(ph * 0.25)), 2, color, width=0)
+    canvas.circle((px + int(pw * 0.70), py + int(ph * 0.25)), 2, color, width=0)
 
-    # little footswitch dot inside pedal
-    canvas.circle((px + ped_w // 2, py + int(ped_h * 0.65)), 2, color, width=0)
-
-    # through line
-    canvas.line((lx + jack_r + 1, mid), (px, mid), color, width=2)
-    canvas.line((px + ped_w, mid), (rx - jack_r - 1, mid), color, width=2)
-    canvas.line((px + 3, mid), (px + ped_w - 3, mid), color, width=2)
+    # footswitch / “active” indicator: filled
+    canvas.circle((px + pw // 2, py + int(ph * 0.70)), 3, color, width=0)
 
 
 def badge_bypass(canvas, rect, color, theme):
-    # IN jack -> bypass loop around the pedal -> OUT jack
+    # Stompbox + clean bypass "wire loop" under it (with terminals + rounded corners)
     x, y, w, h = _pad_rect(rect, 1)
-    mid = y + h // 2
 
-    jack_r = 2
-    lx = x + 3
-    rx = x + w - 4
+    # pedal body
+    pw = max(14, int(w * 0.70))
+    ph = max(10, int(h * 0.80))
+    px = x + (w - pw) // 2
+    py = y + (h - ph) // 2
 
-    # jacks
-    canvas.circle((lx, mid), jack_r, color, width=0)
-    canvas.circle((rx, mid), jack_r, color, width=0)
+    canvas.round_rect((px, py, pw, ph), radius=4, color=color, fill=False, width=2)
 
-    # pedal body (still shown, but not in the path)
-    ped_w = max(10, int(w * 0.45))
-    ped_h = max(8, int(h * 0.70))
-    px = x + (w - ped_w) // 2
-    py = y + (h - ped_h) // 2
-    canvas.round_rect((px, py, ped_w, ped_h), radius=4, color=color, fill=False, width=2)
+    # knobs
+    canvas.circle((px + int(pw * 0.30), py + int(ph * 0.25)), 2, color, width=0)
+    canvas.circle((px + int(pw * 0.70), py + int(ph * 0.25)), 2, color, width=0)
 
-    # bypass line goes UNDER the pedal (more "patch cable" vibe than going over)
-    by = min(y + h - 3, py + ped_h + 2)
-
-    # down from left jack, across, up to right jack
-    canvas.line((lx + jack_r + 1, mid), (lx + jack_r + 1, by), color, width=2)
-    canvas.line((lx + jack_r + 1, by), (rx - jack_r - 1, by), color, width=2)
-    canvas.line((rx - jack_r - 1, by), (rx - jack_r - 1, mid), color, width=2)
+    # footswitch hollow (inactive)
+    fsx = px + pw // 2
+    fsy = py + int(ph * 0.70)
+    canvas.circle((fsx, fsy), 3, color, width=2)
 
 
 ### WAVEFORM ICONS ###
@@ -269,12 +273,6 @@ def filter_lp6(canvas, rect, color, theme):
     _draw_cubic(canvas, p0, p1, p2, p3, color, width=3)
 
 
-def filter_hp6(canvas, rect, color, theme):
-    # Same as LP but mirrored vertically using the utility
-    mirror_lp = mirror(filter_lp6, flip="vertical", h_mode="below_zero")
-    mirror_lp(canvas, rect, color, theme)
-
-
 def filter_bp6(canvas, rect, color, theme):
     # Narrow bandpass: only a small region touches 0-line in the middle, sides attenuated
     x, y, w, h = _pad_rect(rect, 6)
@@ -308,11 +306,15 @@ def filter_bp6(canvas, rect, color, theme):
         color, width=3, steps=18
     )
 
+# cache mirror variants once (module scope)
+_filter_hp6 = mirror(filter_lp6, flip="vertical")
+_filter_notch6 = mirror(filter_bp6, flip="horizontal", h_mode="below_zero", below_shift=0.65)
+
+def filter_hp6(canvas, rect, color, theme):
+    _filter_hp6(canvas, rect, color, theme)
 
 def filter_notch6(canvas, rect, color, theme):
-    # Same as BP but mirrored horizontally using the utility
-    mirror_bp = mirror(filter_bp6, flip="horizontal", h_mode="below_zero")
-    mirror_bp(canvas, rect, color, theme)
+    _filter_notch6(canvas, rect, color, theme)
 
 
 def filter_ladder(canvas, rect, color, theme):
