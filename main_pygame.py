@@ -1,10 +1,11 @@
+import time
 import pygame
 
 from msui.core.model import Effect, Page
 from msui.controls.dial import DialControl
 from msui.controls.button import ButtonControl
 from msui.controls.enumsel import EnumControl
-from msui.controls.switch import SwitchControl  # NEW
+from msui.controls.switch import SwitchControl
 from msui.render.theme import Theme
 from msui.render import icons as wave_icons
 from msui.render.screen_effect import render_effect_editor
@@ -21,10 +22,11 @@ def build_demo_effect() -> Effect:
         "depth": 45,
         "tone": 55,
 
-        "sync": False,          # button
-        "mode": 0,              # 3-way switch index (0..2)  NEW
-        "wave": 0,              # enum index
-        "filter": 0,            # enum index
+        "sync": False,
+        "mode": 0,
+
+        "wave": 0,
+        "filter": 0,
 
         "pre": 10,
         "post": 70,
@@ -34,7 +36,7 @@ def build_demo_effect() -> Effect:
     pages = [
         Page("MAIN", [
             DialControl(key="rate", label="RATE", vmin=0, vmax=100, step=1),
-            SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),  # NEW
+            SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),
             ButtonControl(key="sync", label="SYNC", true_text="ON", false_text="OFF"),
         ]),
         Page("MOD", [
@@ -69,38 +71,44 @@ def build_demo_effect() -> Effect:
     return Effect(name="CHORUS", pages=pages, params=params)
 
 
-def apply_event(effect: Effect, event):
+def apply_event(effect: Effect, event) -> tuple[bool, bool]:
+    """
+    Returns: (continue_running, did_state_change)
+    """
     t = event.type
 
     if t == QUIT:
-        return False
+        return False, False
 
     if t == TOGGLE_BYPASS:
         effect.enabled = not effect.enabled
-        return True
+        return True, True
 
     if t == NAV_LEFT:
         effect.control_index = (effect.control_index - 1) % 3
-        return True
+        return True, True
 
     if t == NAV_RIGHT:
         effect.control_index = (effect.control_index + 1) % 3
-        return True
+        return True, True
 
     if t == PAGE_PREV:
         effect.page_index = (effect.page_index - 1) % len(effect.pages)
-        return True
+        return True, True
 
     if t == PAGE_NEXT:
         effect.page_index = (effect.page_index + 1) % len(effect.pages)
-        return True
+        return True, True
 
     if t == VALUE_DELTA:
         ctrl = effect.current_control()
+        before = effect.params.get(ctrl.key, None)
         ctrl.adjust(event.delta, effect)
-        return True
+        after = effect.params.get(ctrl.key, None)
+        # if control didn't change value, no need to redraw
+        return True, (before != after)
 
-    return True
+    return True, False
 
 
 def main():
@@ -117,27 +125,82 @@ def main():
     }
 
     canvas = PygameCanvas(theme.W, theme.H, fonts)
-    input_src = PygameInput()
+    input_src = PygameInput(theme)
     clock = pygame.time.Clock()
 
     effect = build_demo_effect()
 
+    # --- profiling counters ---
+    last_print = time.perf_counter()
+    loops = 0
+    renders = 0
+    events_total = 0
+    accum_render_s = 0.0
+    accum_present_s = 0.0
+
+    # Force an initial render
+    needs_redraw = True
     running = True
+
     while running:
-        dt_ms = clock.tick(theme.FPS)
+        clock.tick(theme.FPS)
         input_src.pump_pygame_events()
 
-        for ev in input_src.get_events(dt_ms):
-            ok = apply_event(effect, ev)
+        dt_ms = clock.tick(theme.FPS)
+        events = input_src.get_events(dt_ms)
+        events_total += len(events)
+
+        # Apply events; mark redraw if anything changed
+        changed = False
+        for ev in events:
+            ok, did_change = apply_event(effect, ev)
             if not ok:
                 running = False
                 break
+            if did_change:
+                changed = True
 
-        render_effect_editor(canvas, effect, theme)
+        if changed:
+            needs_redraw = True
 
-        scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
-        win.blit(scaled, (0, 0))
-        pygame.display.flip()
+        # Only render + present when needed
+        if needs_redraw:
+            t_r0 = time.perf_counter()
+            render_effect_editor(canvas, effect, theme)
+            t_r1 = time.perf_counter()
+
+            scaled = pygame.transform.scale(
+                canvas.surface,
+                (theme.W * theme.SCALE, theme.H * theme.SCALE),
+            )
+            win.blit(scaled, (0, 0))
+            pygame.display.flip()
+            t_r2 = time.perf_counter()
+
+            renders += 1
+            accum_render_s += (t_r1 - t_r0)
+            accum_present_s += (t_r2 - t_r1)
+
+            needs_redraw = False
+
+        loops += 1
+
+        # Print once/sec
+        now = time.perf_counter()
+        if now - last_print >= 1.0:
+            avg_render_ms = (accum_render_s / max(1, renders)) * 1000.0
+            avg_present_ms = (accum_present_s / max(1, renders)) * 1000.0
+            print(
+                f"loops={loops:4d}/s  renders={renders:4d}/s  events={events_total:4d}/s  "
+                f"avg_render_ms={avg_render_ms:6.2f}  avg_present_ms={avg_present_ms:6.2f}"
+            )
+
+            last_print = now
+            loops = 0
+            renders = 0
+            events_total = 0
+            accum_render_s = 0.0
+            accum_present_s = 0.0
 
     pygame.quit()
 

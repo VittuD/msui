@@ -44,25 +44,43 @@ class AccelRepeater:
 
 class PygameInput:
     """
-    Maps keyboard to UI events:
-      LEFT/RIGHT: select control
-      UP: +1 (accelerating)
-      DOWN: -1 (accelerating)
-      A/D: prev/next page (repeat, no accel)
-      SPACE: toggle bypass
-      ESC / window close: quit
+    Pygame-based input handler with key repeat and acceleration.
+    Maps keys to UIEvents.
+    Keys mapped:
+        - LEFT/RIGHT: NAV_LEFT/NAV_RIGHT (repeat, no accel)
+        - A/D: PAGE_PREV/PAGE_NEXT (repeat, no accel)
+        - UP/DOWN: VALUE_DELTA (repeat, with accel)
+        - SPACE: TOGGLE_BYPASS (edge-triggered)
     """
-    def __init__(self):
-        self.rep_left  = AccelRepeater(first_delay_ms=250, repeat_ms=120, accel=False)
-        self.rep_right = AccelRepeater(first_delay_ms=250, repeat_ms=120, accel=False)
-        self.rep_a     = AccelRepeater(first_delay_ms=300, repeat_ms=180, accel=False)
-        self.rep_d     = AccelRepeater(first_delay_ms=300, repeat_ms=180, accel=False)
+    def __init__(self, theme):
+        fps = max(1.0, float(getattr(theme, "FPS", 60)))
 
-        self.rep_up    = AccelRepeater(first_delay_ms=250, repeat_ms=60, accel=True)
-        self.rep_down  = AccelRepeater(first_delay_ms=250, repeat_ms=60, accel=True)
+        first_delay_ms = int(max(0.0, getattr(theme, "INPUT_FIRST_DELAY_S", 0.25)) * 1000)
+
+        def ratio_to_repeat_ms(ratio: float, *, max_hz: float | None = None) -> int:
+            hz = fps * max(0.0, float(ratio))
+            if max_hz is not None:
+                hz = min(hz, max_hz)
+            # if ratio==0 -> "never repeat": set a huge interval
+            if hz <= 0.0:
+                return 10**9
+            return max(1, int(1000.0 / hz))
+
+        updown_ms = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_UPDOWN_RATIO", 1.0), max_hz=20.0)
+        nav_ms    = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_NAV_RATIO", 0.6),   max_hz=12.0)
+        page_ms   = ratio_to_repeat_ms(getattr(theme, "INPUT_REPEAT_PAGE_RATIO", 0.4),  max_hz=8.0)
+
+        self.rep_left  = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms,  accel=False)
+        self.rep_right = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=nav_ms,  accel=False)
+        self.rep_a     = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
+        self.rep_d     = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=page_ms, accel=False)
+
+        self.rep_up    = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
+        self.rep_down  = AccelRepeater(first_delay_ms=first_delay_ms, repeat_ms=updown_ms, accel=True)
 
         self._quit = False
         self._toggle_bypass_pressed = False
+
 
     def pump_pygame_events(self):
         for ev in pygame.event.get():

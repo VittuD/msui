@@ -9,10 +9,16 @@ def to_rgb565_approx(rgb):
 class Theme:
     # Screen
     W = 240
-    H = 240
+    H = 280
     SCALE = 3
-    FPS = 60
+    FPS = 30
 
+    # Input timing (relative to FPS)
+    INPUT_FIRST_DELAY_S = 0.25          # seconds before repeating starts
+    INPUT_REPEAT_UPDOWN_RATIO = 1.0     # repeats per second = FPS * ratio
+    INPUT_REPEAT_NAV_RATIO = 0.6
+    INPUT_REPEAT_PAGE_RATIO = 0.4
+    
     # Fonts (keys; actual pygame fonts live in Canvas)
     FONT_S = "S"
     FONT_M = "M"

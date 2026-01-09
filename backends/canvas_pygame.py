@@ -11,6 +11,8 @@ class PygameCanvas:
         self.h = h
         self.surface = pygame.Surface((w, h))
         self.fonts = fonts
+        self._text_cache = {}
+        self._size_cache = {}
 
     def fill(self, color):
         self.surface.fill(color)
@@ -36,10 +38,20 @@ class PygameCanvas:
         pygame.draw.line(self.surface, color, p1, p2, width)
 
     def text(self, font_key, x, y, s, color):
-        font = self.fonts[font_key]
-        img = font.render(s, True, color)
+        key = (font_key, s, color)
+        img = self._text_cache.get(key)
+        if img is None:
+            font = self.fonts[font_key]
+            img = font.render(s, True, color)
+            self._text_cache[key] = img
         self.surface.blit(img, (x, y))
 
     def text_size(self, font_key, s):
-        font = self.fonts[font_key]
-        return font.size(s)
+        key = (font_key, s)
+        v = self._size_cache.get(key)
+        if v is None:
+            font = self.fonts[font_key]
+            v = font.size(s)
+            self._size_cache[key] = v
+        return v
+    
