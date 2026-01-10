@@ -90,6 +90,16 @@ Optional: enable debug logging
 MSUI_LOG_LEVEL=DEBUG python -m msui
 ```
 
+Optional: reduce noisy DEBUG input events (keep 1 in 10)
+```bash
+MSUI_LOG_LEVEL=DEBUG MSUI_LOG_SAMPLING='{"msui.backends.input_pygame:event": 10}' python -m msui
+```
+
+Optional: disable noise control entirely (no rate-limit/sampling)
+```bash
+MSUI_LOG_LEVEL=DEBUG MSUI_LOG_NOISE=0 python -m msui
+```
+
 ---
 
 ## How the UI is driven
