@@ -2,19 +2,21 @@
 from __future__ import annotations
 
 import pygame
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple
 from collections import OrderedDict
 
 from msui.backends.canvas import Canvas, Color, Point, Rect
+from msui.log import LogMixin
 
 
-class _LRUCache:
+class _LRUCache(LogMixin):
     """
     Tiny LRU cache with a hard cap to avoid unbounded growth.
     """
     def __init__(self, capacity: int):
         self.capacity = max(0, int(capacity))
         self._od: "OrderedDict[object, object]" = OrderedDict()
+        self.log.debug("lru_init", capacity=self.capacity)
 
     def get(self, key):
         if self.capacity <= 0:
@@ -30,22 +32,33 @@ class _LRUCache:
     def put(self, key, val) -> None:
         if self.capacity <= 0:
             return
+
         if key in self._od:
             # refresh position
             try:
                 self._od.pop(key)
             except KeyError:
                 pass
+
         self._od[key] = val
+
         # evict least-recent
+        evicted = 0
         while len(self._od) > self.capacity:
             self._od.popitem(last=False)
+            evicted += 1
+
+        if evicted:
+            # DEBUG only; avoids spam
+            self.log.debug("lru_evicted", count=evicted, size=len(self._od), capacity=self.capacity)
 
     def clear(self) -> None:
+        n = len(self._od)
         self._od.clear()
+        self.log.debug("lru_cleared", prev_size=n)
 
 
-class PygameCanvas(Canvas):
+class PygameCanvas(LogMixin, Canvas):
     """
     Pygame implementation of the stable Canvas interface.
     Keeps pygame isolated here.
@@ -69,10 +82,22 @@ class PygameCanvas(Canvas):
         self._text_cache = _LRUCache(text_cache_max)
         self._size_cache = _LRUCache(size_cache_max)
 
+        # Helpful init log (INFO is fine; it happens once)
+        self.log.info(
+            "canvas_init",
+            backend="pygame",
+            w=self.w,
+            h=self.h,
+            fonts=list(fonts.keys()),
+            text_cache_max=int(text_cache_max),
+            size_cache_max=int(size_cache_max),
+        )
+
     def clear_caches(self) -> None:
         """
         Call this if fonts/theme are swapped at runtime.
         """
+        self.log.info("canvas_clear_caches")
         self._text_cache.clear()
         self._size_cache.clear()
 
@@ -139,7 +164,12 @@ class PygameCanvas(Canvas):
         key = (font_key, s, color)
         img = self._text_cache.get(key)
         if img is None:
-            font = self.fonts[font_key]
+            font = self.fonts.get(font_key)
+            if font is None:
+                # This is a real bug, so warn loudly and fallback.
+                self.log.warn("missing_font_key", font_key=font_key, available=list(self.fonts.keys()))
+                # Pick any font deterministically to avoid crashing
+                font = next(iter(self.fonts.values()))
             img = font.render(s, True, color)
             self._text_cache.put(key, img)
         self.surface.blit(img, (int(x), int(y)))
@@ -149,7 +179,10 @@ class PygameCanvas(Canvas):
         key = (font_key, s)
         v = self._size_cache.get(key)
         if v is None:
-            font = self.fonts[font_key]
+            font = self.fonts.get(font_key)
+            if font is None:
+                self.log.warn("missing_font_key_size", font_key=font_key, available=list(self.fonts.keys()))
+                font = next(iter(self.fonts.values()))
             v = font.size(s)
             self._size_cache.put(key, v)
         return v

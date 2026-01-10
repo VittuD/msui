@@ -9,15 +9,21 @@ from msui.controls.button import ButtonControl
 from msui.controls.enumsel import EnumControl
 from msui.controls.switch import SwitchControl
 from msui.controls.text import TextControl
+
 from msui.render.theme import Theme
 from msui.render import icons as wave_icons
 from msui.render.screen_effect import render_effect_editor
+
 from msui.backends.canvas_pygame import PygameCanvas
 from msui.backends.input_pygame import PygameInput
+
 from msui.core.dirty import DIRTY_NONE, DIRTY_ALL
 from msui.core.profiler import Profiler
 from msui.core.controller import apply_event
-from msui import log
+
+from msui.log import get_logger
+
+log = get_logger(__name__)
 
 
 def build_demo_effect() -> Effect:
@@ -37,49 +43,66 @@ def build_demo_effect() -> Effect:
     }
 
     pages = [
-        Page("MAIN", (
-            DialControl(key="rate", label="RATE", vmin=-12, vmax=12, step=1),
-            SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),
-            ButtonControl(key="sync", label="SYNC", true_text="ON", false_text="OFF"),
-        )),
-        Page("MOD", (
-            EnumControl(
-                key="wave",
-                label="WAVE",
-                options=("SINE", "TRI", "SAW", "SQR"),
-                icons=(wave_icons.wave_sine, wave_icons.wave_triangle, wave_icons.wave_saw, wave_icons.wave_square),
+        Page(
+            "MAIN",
+            (
+                DialControl(key="rate", label="RATE", vmin=-12, vmax=12, step=1),
+                SwitchControl(key="mode", label="MODE", options=("A", "B", "C")),
+                ButtonControl(key="sync", label="SYNC", true_text="ON", false_text="OFF"),
             ),
-            EnumControl(
-                key="filter",
-                label="FILTER",
-                options=("LP6", "HP6", "BP6", "NOTCH", "LADDER", "PULTEC"),
-                icons=(
-                    wave_icons.filter_lp6,
-                    wave_icons.filter_hp6,
-                    wave_icons.filter_bp6,
-                    wave_icons.filter_notch6,
-                    wave_icons.filter_ladder,
-                    wave_icons.filter_pultec,
+        ),
+        Page(
+            "MOD",
+            (
+                EnumControl(
+                    key="wave",
+                    label="WAVE",
+                    options=("SINE", "TRI", "SAW", "SQR"),
+                    icons=(
+                        wave_icons.wave_sine,
+                        wave_icons.wave_triangle,
+                        wave_icons.wave_saw,
+                        wave_icons.wave_square,
+                    ),
                 ),
+                EnumControl(
+                    key="filter",
+                    label="FILTER",
+                    options=("LP6", "HP6", "BP6", "NOTCH", "LADDER", "PULTEC"),
+                    icons=(
+                        wave_icons.filter_lp6,
+                        wave_icons.filter_hp6,
+                        wave_icons.filter_bp6,
+                        wave_icons.filter_notch6,
+                        wave_icons.filter_ladder,
+                        wave_icons.filter_pultec,
+                    ),
+                ),
+                DialControl(key="tone", label="TONE", vmin=0, vmax=100, step=1),
             ),
-            DialControl(key="tone", label="TONE", vmin=0, vmax=100, step=1),
-        )),
-        Page("LEVEL", (
-            DialControl(key="pre", label="PRE", vmin=0, vmax=100, step=1),
-            DialControl(key="post", label="POST", vmin=0, vmax=100, step=1),
-            DialControl(key="dry", label="DRY", vmin=0, vmax=100, step=1),
-        )),
-        Page("TUNE", (
-            DialControl(key="detune", label="DETUNE", vmin=-12, vmax=12, step=1),
-            DialControl(key="bpm", label="BPM", vmin=30, vmax=300, step=1),
-            TextControl(key="div", label="DIV", options=("1/1", "1/2", "1/4", "1/8", "1/16")),
-        )),
+        ),
+        Page(
+            "LEVEL",
+            (
+                DialControl(key="pre", label="PRE", vmin=0, vmax=100, step=1),
+                DialControl(key="post", label="POST", vmin=0, vmax=100, step=1),
+                DialControl(key="dry", label="DRY", vmin=0, vmax=100, step=1),
+            ),
+        ),
+        Page(
+            "TUNE",
+            (
+                DialControl(key="detune", label="DETUNE", vmin=-12, vmax=12, step=1),
+                DialControl(key="bpm", label="BPM", vmin=30, vmax=300, step=1),
+                TextControl(key="div", label="DIV", options=("1/1", "1/2", "1/4", "1/8", "1/16")),
+            ),
+        ),
     ]
 
     return Effect(name="CHORUS", pages=pages, params=params)
 
 
-def main():
+def main() -> None:
     pygame.init()
 
     theme = Theme()
@@ -92,6 +115,16 @@ def main():
         "L": pygame.font.SysFont("dejavusansmono", 22, bold=True),
     }
 
+    log.info(
+        "demo_start",
+        demo="chorus",
+        backend="pygame",
+        w=int(theme.W),
+        h=int(theme.H),
+        scale=int(theme.SCALE),
+        fps=float(theme.FPS),
+    )
+
     canvas = PygameCanvas(theme.W, theme.H, fonts)
     input_src = PygameInput(theme)
     clock = pygame.time.Clock()
@@ -102,39 +135,42 @@ def main():
     dirty = DIRTY_ALL
     running = True
 
-    while running:
-        dt_ms = clock.tick(theme.FPS)
-        input_src.pump()
+    try:
+        while running:
+            dt_ms = clock.tick(theme.FPS)
+            input_src.pump()
 
-        events = input_src.get_events(dt_ms)
-        prof.add_events(len(events))
+            events = input_src.get_events(dt_ms)
+            prof.add_events(len(events))
 
-        for ev in events:
-            ok, d = apply_event(effect, ev)
-            if not ok:
-                running = False
-                break
-            dirty |= d
+            for ev in events:
+                ok, d = apply_event(effect, ev)
+                if not ok:
+                    running = False
+                    break
+                dirty |= d
 
-        if dirty != DIRTY_NONE:
-            t0 = time.perf_counter()
-            render_effect_editor(canvas, effect, theme, dirty_mask=dirty)
-            t1 = time.perf_counter()
+            if dirty != DIRTY_NONE:
+                t0 = time.perf_counter()
+                render_effect_editor(canvas, effect, theme, dirty_mask=dirty)
+                t1 = time.perf_counter()
 
-            scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
-            win.blit(scaled, (0, 0))
-            pygame.display.flip()
-            t2 = time.perf_counter()
+                scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
+                win.blit(scaled, (0, 0))
+                pygame.display.flip()
+                t2 = time.perf_counter()
 
-            prof.add_render(t1 - t0, t2 - t1)
-            dirty = DIRTY_NONE
+                prof.add_render(t1 - t0, t2 - t1)
+                dirty = DIRTY_NONE
 
-        prof.tick_loop()
-        line = prof.maybe_report()
-        if line:
-            log.profile(line)
+            prof.tick_loop()
 
-    pygame.quit()
+            # Structured perf log (do NOT also call maybe_report()/print)
+            prof.maybe_profile()
+
+    finally:
+        pygame.quit()
+        log.info("demo_exit", demo="chorus")
 
 
 if __name__ == "__main__":

@@ -3,50 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-from msui.controls.base import Control
+from msui.controls.base import IndexedControl
 from msui.render.icon import Icon, IconFn
 
 IconLike = Union[Icon, IconFn]
 
 
 @dataclass
-class EnumControl(Control):
+class EnumControl(IndexedControl):
     """
     Enum param stored as int index in effect.params[self.key] (0..N-1).
     Renders a waveform/icon instead of dots.
     """
     options: Tuple[str, ...] = ("A", "B", "C")
     icons: Optional[Tuple[IconLike, ...]] = None
-
-    def _n(self):
-        return max(1, len(self.options))
-
-    def _get_index(self, effect) -> int:
-        if len(self.options) == 0:
-            return 0
-        idx = int(effect.params.get(self.key, 0))
-        if self.clamp:
-            return max(0, min(len(self.options) - 1, idx))
-        return idx % len(self.options)
-
-    def value_text(self, effect) -> str:
-        if not self.options:
-            return "-"
-        return self.options[self._get_index(effect)]
-
-    def adjust(self, delta: int, effect):
-        if not self.options or delta == 0:
-            return
-        n = len(self.options)
-        idx = self._get_index(effect)
-        idx2 = idx + int(delta)
-
-        if self.clamp:
-            idx2 = max(0, min(n - 1, idx2))
-        else:
-            idx2 = idx2 % n
-
-        effect.params[self.key] = idx2
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)

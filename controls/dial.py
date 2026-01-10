@@ -18,11 +18,14 @@ class DialControl(Control):
         return f"{v:03d}"
 
     def adjust(self, delta: int, effect):
-        v = int(effect.params.get(self.key, 0))
-        v += int(delta) * self.step
+        if delta == 0:
+            return
+
+        before = int(effect.params.get(self.key, 0))
+        v = before + (int(delta) * int(self.step))
 
         if self.clamp:
-            v = max(self.vmin, min(self.vmax, v))
+            v = max(int(self.vmin), min(int(self.vmax), v))
         else:
             lo, hi = int(self.vmin), int(self.vmax)
             if hi < lo:
@@ -31,7 +34,9 @@ class DialControl(Control):
             if span > 0:
                 v = lo + ((v - lo) % span)
 
-        effect.params[self.key] = v
+        if v != before:
+            effect.params[self.key] = v
+            self._log_param_change(delta=delta, before=before, after=v)
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)

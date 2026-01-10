@@ -17,8 +17,23 @@ from msui.core.dirty import (
     DIRTY_TILE2,
 )
 
+from msui.log import get_logger
+
+log = get_logger(__name__)
+
 ICON_ACTIVE = Icon(ico.badge_active)
 ICON_BYPASS = Icon(ico.badge_bypass)
+
+# Known bits we actually interpret here (DIRTY_ALL is a convenience constant).
+_KNOWN_DIRTY_BITS = (
+    DIRTY_NONE
+    | DIRTY_HEADER
+    | DIRTY_PAGE
+    | DIRTY_TILES
+    | DIRTY_TILE0
+    | DIRTY_TILE1
+    | DIRTY_TILE2
+)
 
 
 def _fill_rect(canvas, rect, color):
@@ -59,9 +74,21 @@ def draw_page_slots(canvas, x, y, n_pages: int, page_index: int, theme):
 
         if i == idx:
             canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.FG, fill=True)
-            canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.FG, fill=False, width=theme.PAGE_SLOTS_ACTIVE_OUTLINE_W)
+            canvas.round_rect(
+                r,
+                radius=theme.PAGE_SLOTS_ACTIVE_RADIUS,
+                color=theme.FG,
+                fill=False,
+                width=theme.PAGE_SLOTS_ACTIVE_OUTLINE_W,
+            )
         else:
-            canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.DIM, fill=False, width=theme.PAGE_SLOTS_INACTIVE_OUTLINE_W)
+            canvas.round_rect(
+                r,
+                radius=theme.PAGE_SLOTS_ACTIVE_RADIUS,
+                color=theme.DIM,
+                fill=False,
+                width=theme.PAGE_SLOTS_INACTIVE_OUTLINE_W,
+            )
 
     return (x, y, pill_w, pill_h)
 
@@ -144,6 +171,31 @@ def _render_tiles(canvas, effect: Effect, theme: Theme, mask: int) -> None:
 def render_effect_editor(canvas, effect: Effect, theme: Theme, dirty_mask: int = DIRTY_ALL) -> None:
     if dirty_mask == DIRTY_NONE:
         return
+
+    # Debug-only: this is helpful and not a duplicate of input/control logs.
+    # It tells you what the renderer decided to redraw.
+    unknown = int(dirty_mask) & ~_KNOWN_DIRTY_BITS
+    if unknown:
+        # This should not happen; warn is OK because it indicates a bug.
+        log.warn("unknown_dirty_bits", dirty_mask=int(dirty_mask), unknown=int(unknown))
+
+    # In DIRTY_ALL case, header/page/tiles are implicitly redrawn.
+    redraw_header = bool(dirty_mask & DIRTY_HEADER) or dirty_mask == DIRTY_ALL
+    redraw_page = bool(dirty_mask & DIRTY_PAGE) or dirty_mask == DIRTY_ALL
+    redraw_tiles = (
+        bool(dirty_mask & DIRTY_TILES)
+        or bool(dirty_mask & (DIRTY_TILE0 | DIRTY_TILE1 | DIRTY_TILE2))
+        or dirty_mask == DIRTY_ALL
+    )
+
+    log.debug(
+        "render_effect_editor",
+        effect=getattr(effect, "name", "?"),
+        dirty_mask=int(dirty_mask),
+        header=redraw_header,
+        page=redraw_page,
+        tiles=redraw_tiles,
+    )
 
     if dirty_mask == DIRTY_ALL:
         canvas.fill(theme.BG)

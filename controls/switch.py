@@ -3,51 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 
-from msui.controls.base import Control
+from msui.controls.base import IndexedControl
 
 
 @dataclass
-class SwitchControl(Control):
+class SwitchControl(IndexedControl):
     """
     2-3 way toggle switch (vertical silhouette).
     Stored as int index in effect.params[key]:
       0 -> A (top)
       1 -> B (middle)
       2 -> C (bottom)
+
+    Note: UP(+delta) should move toward A (top), so delta_sign = -1.
     """
     options: Tuple[str, ...] = ("A", "B", "C")
-
-    def _n(self) -> int:
-        return max(1, len(self.options))
-
-    def _get_index(self, effect) -> int:
-        n = self._n()
-        idx = int(effect.params.get(self.key, 0))
-        if self.clamp:
-            return max(0, min(n - 1, idx))
-        return idx % n
-
-    def value_text(self, effect) -> str:
-        if not self.options:
-            return "-"
-        return self.options[self._get_index(effect)]
-
-    def adjust(self, delta: int, effect):
-        if not self.options or delta == 0:
-            return
-
-        n = self._n()
-        idx = self._get_index(effect)
-
-        # UP should move toward A (top). Input sends UP=+ so invert.
-        idx2 = idx - int(delta)
-
-        if self.clamp:
-            idx2 = max(0, min(n - 1, idx2))
-        else:
-            idx2 = idx2 % n
-
-        effect.params[self.key] = idx2
+    delta_sign: int = -1
 
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)

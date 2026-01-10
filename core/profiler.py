@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import time
 
+from msui.log import LogMixin
 
-class Profiler:
+
+class Profiler(LogMixin):
     """
     Small reusable per-second profiler for demos.
 
@@ -14,15 +16,6 @@ class Profiler:
       - events/s
       - avg render ms (time spent rendering into canvas)
       - avg present ms (time spent scaling/blitting/flipping)
-
-    Usage:
-      prof = Profiler()
-      ...
-      prof.tick_loop()
-      prof.add_events(len(events))
-      prof.add_render(render_s, present_s)
-      line = prof.maybe_report()
-      if line: print(line)
     """
 
     def __init__(self, print_interval_s: float = 1.0):
@@ -64,3 +57,28 @@ class Profiler:
         self._last_print = now
         self._reset_window()
         return line
+
+    def maybe_profile(self) -> bool:
+        """
+        Optional structured logging alternative to printing the string.
+        If you use this, remove demo's log.profile(line) to avoid duplicates.
+        """
+        now = time.perf_counter()
+        if (now - self._last_print) < self.print_interval_s:
+            return False
+
+        avg_render_ms = (self.accum_render_s / max(1, self.renders)) * 1000.0
+        avg_present_ms = (self.accum_present_s / max(1, self.renders)) * 1000.0
+
+        self.log.profile(
+            "perf",
+            loops_per_s=int(self.loops),
+            renders_per_s=int(self.renders),
+            events_per_s=int(self.events),
+            avg_render_ms=float(avg_render_ms),
+            avg_present_ms=float(avg_present_ms),
+        )
+
+        self._last_print = now
+        self._reset_window()
+        return True

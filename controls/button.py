@@ -1,32 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from msui.controls.base import Control
+from msui.controls.base import BoolControl
 
 
 @dataclass
-class ButtonControl(Control):
+class ButtonControl(BoolControl):
     """
     Bool param stored in effect.params[self.key] as True/False.
     Visual: LED indicator only (no base), OFF is intentionally very empty.
     """
-    true_text: str = "ON"
-    false_text: str = "OFF"
-
-    def value_text(self, effect) -> str:
-        return self.true_text if bool(effect.params.get(self.key, False)) else self.false_text
-
-    def adjust(self, delta: int, effect):
-        if delta == 0:
-            return
-
-        cur = bool(effect.params.get(self.key, False))
-
-        if self.clamp:
-            effect.params[self.key] = True if delta > 0 else False
-        else:
-            effect.params[self.key] = not cur
-
     def render(self, canvas, rect, focused: bool, effect, theme):
         self.draw_tile_frame(canvas, rect, focused, theme)
         _, visual_rect, _ = self.split_tile(rect, theme)

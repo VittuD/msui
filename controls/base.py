@@ -3,9 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 
+from msui.log import LogMixin
+
 
 @dataclass
-class Control:
+class Control(LogMixin):
     key: str
     label: str
     clamp: bool = True   # True=clamp, False=wrap/rollover when applicable
@@ -22,6 +24,25 @@ class Control:
         # default numeric-ish formatting (Dial overrides; others override)
         v = int(effect.params.get(self.key, 0))
         return f"-{abs(v):03d}" if v < 0 else f"{v:03d}"
+
+    # ---- shared logging helpers ----
+    def _log_param_change(self, *, delta: int, before, after) -> None:
+        """
+        Debug-only, and only when value actually changes.
+        Keep this lightweight; do NOT log from render paths.
+        """
+        if before == after:
+            return
+        self.log.debug(
+            "control_adjust",
+            control=self.__class__.__name__,
+            key=self.key,
+            label=self.label,
+            delta=int(delta),
+            before=before,
+            after=after,
+            clamp=bool(self.clamp),
+        )
 
     # ---- shared tile helpers ----
     @staticmethod
@@ -92,11 +113,16 @@ class BoolControl(Control):
         if delta == 0:
             return
 
-        cur = bool(effect.params.get(self.key, False))
+        before = bool(effect.params.get(self.key, False))
+
         if self.clamp:
-            effect.params[self.key] = True if delta > 0 else False
+            after = True if delta > 0 else False
         else:
-            effect.params[self.key] = not cur
+            after = not before
+
+        if before != after:
+            effect.params[self.key] = after
+            self._log_param_change(delta=delta, before=before, after=after)
 
 
 # --------------------------------
@@ -152,6 +178,18 @@ class IndexedControl(Control):
     def adjust(self, delta: int, effect):
         if not self.options or delta == 0:
             return
-        idx = self._get_index(effect)
-        idx2 = idx + (self.delta_sign * int(delta))
-        self._set_index(effect, idx2)
+
+        before = int(effect.params.get(self.key, 0))
+        cur = self._get_index(effect)
+        nxt = cur + (self.delta_sign * int(delta))
+
+        # apply clamp/wrap in one place
+        if self.clamp:
+            nxt = max(0, min(len(self.options) - 1, int(nxt)))
+        else:
+            nxt = int(nxt) % len(self.options)
+
+        if nxt != cur:
+            self._set_index(effect, nxt)
+            after = int(effect.params.get(self.key, 0))
+            self._log_param_change(delta=delta, before=before, after=after)

@@ -1,4 +1,3 @@
-# msui/core/controller.py
 from __future__ import annotations
 
 from msui.core.dirty import (
@@ -20,6 +19,9 @@ from msui.core.events import (
     QUIT,
 )
 from msui.core.model import Effect
+from msui.log import get_logger
+
+log = get_logger(__name__)
 
 
 def _tile_bit(i: int) -> int:
@@ -42,7 +44,9 @@ def apply_event(effect: Effect, event) -> tuple[bool, int]:
     Core state update: apply one UIEvent to the Effect.
     Returns (running_ok, dirty_mask).
 
-    This is intentionally backend-agnostic: no pygame, no rendering here.
+    Intentionally avoids duplicate logs:
+      - input backend logs emitted events
+      - controls log param changes on adjust()
     """
     t = event.type
 
@@ -84,11 +88,13 @@ def apply_event(effect: Effect, event) -> tuple[bool, int]:
     if t == VALUE_DELTA:
         ctrl = effect.current_control()
         before = effect.params.get(ctrl.key, None)
-        ctrl.adjust(event.delta, effect)
+        ctrl.adjust(event.delta, effect)  # control logs the change if any
         after = effect.params.get(ctrl.key, None)
 
         if before != after:
             return True, _tile_bit(effect.control_index)
         return True, DIRTY_NONE
 
+    # Unknown event type is a real problem; warn once per occurrence.
+    log.warn("unknown_ui_event", type=t)
     return True, DIRTY_NONE
