@@ -115,62 +115,76 @@ def main() -> None:
         "L": pygame.font.SysFont("dejavusansmono", 22, bold=True),
     }
 
-    log.info(
-        "demo_start",
+    # High-level demo context (ambient): applied to ALL logs underneath.
+    with log.context(
         demo="chorus",
         backend="pygame",
         w=int(theme.W),
         h=int(theme.H),
         scale=int(theme.SCALE),
         fps=float(theme.FPS),
-    )
+    ):
+        # No redundant fields; they are already ambient via context().
+        log.info("demo_start")
 
-    canvas = PygameCanvas(theme.W, theme.H, fonts)
-    input_src = PygameInput(theme)
-    clock = pygame.time.Clock()
+        canvas = PygameCanvas(theme.W, theme.H, fonts)
+        input_src = PygameInput(theme)
+        clock = pygame.time.Clock()
 
-    effect = build_demo_effect()
-    prof = Profiler(print_interval_s=1.0)
+        effect = build_demo_effect()
 
-    dirty = DIRTY_ALL
-    running = True
+        # Effect name is stable, so bind once at the boundary.
+        with log.context(effect=getattr(effect, "name", "?")):
+            prof = Profiler(print_interval_s=1.0)
 
-    try:
-        while running:
-            dt_ms = clock.tick(theme.FPS)
-            input_src.pump()
+            dirty = DIRTY_ALL
+            running = True
 
-            events = input_src.get_events(dt_ms)
-            prof.add_events(len(events))
+            try:
+                while running:
+                    dt_ms = clock.tick(theme.FPS)
+                    input_src.pump()
 
-            for ev in events:
-                ok, d = apply_event(effect, ev)
-                if not ok:
-                    running = False
-                    break
-                dirty |= d
+                    events = input_src.get_events(dt_ms)
+                    prof.add_events(len(events))
 
-            if dirty != DIRTY_NONE:
-                t0 = time.perf_counter()
-                render_effect_editor(canvas, effect, theme, dirty_mask=dirty)
-                t1 = time.perf_counter()
+                    for ev in events:
+                        # Optional per-event ambient context to connect controller/control logs.
+                        ev_ctx = {"ev": ev.type}
+                        if getattr(ev, "delta", 0):
+                            ev_ctx["delta"] = int(ev.delta)
 
-                scaled = pygame.transform.scale(canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE))
-                win.blit(scaled, (0, 0))
-                pygame.display.flip()
-                t2 = time.perf_counter()
+                        with log.context(**ev_ctx):
+                            ok, d = apply_event(effect, ev)
 
-                prof.add_render(t1 - t0, t2 - t1)
-                dirty = DIRTY_NONE
+                        if not ok:
+                            running = False
+                            break
+                        dirty |= d
 
-            prof.tick_loop()
+                    if dirty != DIRTY_NONE:
+                        t0 = time.perf_counter()
+                        render_effect_editor(canvas, effect, theme, dirty_mask=dirty)
+                        t1 = time.perf_counter()
 
-            # Structured perf log (do NOT also call maybe_report()/print)
-            prof.maybe_profile()
+                        scaled = pygame.transform.scale(
+                            canvas.surface, (theme.W * theme.SCALE, theme.H * theme.SCALE)
+                        )
+                        win.blit(scaled, (0, 0))
+                        pygame.display.flip()
+                        t2 = time.perf_counter()
 
-    finally:
-        pygame.quit()
-        log.info("demo_exit", demo="chorus")
+                        prof.add_render(t1 - t0, t2 - t1)
+                        dirty = DIRTY_NONE
+
+                    prof.tick_loop()
+
+                    # Structured perf log (do NOT also call maybe_report()/print)
+                    prof.maybe_profile()
+
+            finally:
+                pygame.quit()
+                log.info("demo_exit")
 
 
 if __name__ == "__main__":

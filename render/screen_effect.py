@@ -172,44 +172,49 @@ def render_effect_editor(canvas, effect: Effect, theme: Theme, dirty_mask: int =
     if dirty_mask == DIRTY_NONE:
         return
 
-    # Debug-only: this is helpful and not a duplicate of input/control logs.
-    # It tells you what the renderer decided to redraw.
-    unknown = int(dirty_mask) & ~_KNOWN_DIRTY_BITS
-    if unknown:
-        # This should not happen; warn is OK because it indicates a bug.
-        log.warn("unknown_dirty_bits", dirty_mask=int(dirty_mask), unknown=int(unknown))
-
-    # In DIRTY_ALL case, header/page/tiles are implicitly redrawn.
-    redraw_header = bool(dirty_mask & DIRTY_HEADER) or dirty_mask == DIRTY_ALL
-    redraw_page = bool(dirty_mask & DIRTY_PAGE) or dirty_mask == DIRTY_ALL
-    redraw_tiles = (
-        bool(dirty_mask & DIRTY_TILES)
-        or bool(dirty_mask & (DIRTY_TILE0 | DIRTY_TILE1 | DIRTY_TILE2))
-        or dirty_mask == DIRTY_ALL
-    )
-
-    log.debug(
-        "render_effect_editor",
+    # Scoped context at a key boundary: effect/page/control become ambient for all logs in here.
+    with log.context(
         effect=getattr(effect, "name", "?"),
-        dirty_mask=int(dirty_mask),
-        header=redraw_header,
-        page=redraw_page,
-        tiles=redraw_tiles,
-    )
+        page=int(getattr(effect, "page_index", 0)),
+        control=int(getattr(effect, "control_index", 0)),
+    ):
+        # Debug-only: this is helpful and not a duplicate of input/control logs.
+        # It tells you what the renderer decided to redraw.
+        unknown = int(dirty_mask) & ~_KNOWN_DIRTY_BITS
+        if unknown:
+            # This should not happen; warn is OK because it indicates a bug.
+            log.warn("unknown_dirty_bits", dirty_mask=int(dirty_mask), unknown=int(unknown))
 
-    if dirty_mask == DIRTY_ALL:
-        canvas.fill(theme.BG)
-        _render_header_and_badge(canvas, effect, theme)
-        _render_page_slots(canvas, effect, theme)
-        _render_tiles(canvas, effect, theme, DIRTY_TILES)
-        return
+        # In DIRTY_ALL case, header/page/tiles are implicitly redrawn.
+        redraw_header = bool(dirty_mask & DIRTY_HEADER) or dirty_mask == DIRTY_ALL
+        redraw_page = bool(dirty_mask & DIRTY_PAGE) or dirty_mask == DIRTY_ALL
+        redraw_tiles = (
+            bool(dirty_mask & DIRTY_TILES)
+            or bool(dirty_mask & (DIRTY_TILE0 | DIRTY_TILE1 | DIRTY_TILE2))
+            or dirty_mask == DIRTY_ALL
+        )
 
-    if dirty_mask & DIRTY_HEADER:
-        hr = header_rect(theme)
-        _fill_rect(canvas, hr, theme.BG)
-        _render_header_and_badge(canvas, effect, theme)
+        log.debug(
+            "render_effect_editor",
+            dirty_mask=int(dirty_mask),
+            header=redraw_header,
+            page=redraw_page,
+            tiles=redraw_tiles,
+        )
 
-    if dirty_mask & DIRTY_PAGE:
-        _render_page_slots(canvas, effect, theme)
+        if dirty_mask == DIRTY_ALL:
+            canvas.fill(theme.BG)
+            _render_header_and_badge(canvas, effect, theme)
+            _render_page_slots(canvas, effect, theme)
+            _render_tiles(canvas, effect, theme, DIRTY_TILES)
+            return
 
-    _render_tiles(canvas, effect, theme, dirty_mask)
+        if dirty_mask & DIRTY_HEADER:
+            hr = header_rect(theme)
+            _fill_rect(canvas, hr, theme.BG)
+            _render_header_and_badge(canvas, effect, theme)
+
+        if dirty_mask & DIRTY_PAGE:
+            _render_page_slots(canvas, effect, theme)
+
+        _render_tiles(canvas, effect, theme, dirty_mask)
