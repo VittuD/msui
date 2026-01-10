@@ -17,6 +17,7 @@ from msui.backends.input_pygame import PygameInput
 from msui.core.dirty import DIRTY_NONE, DIRTY_ALL
 from msui.core.profiler import Profiler
 from msui.core.controller import apply_event
+from msui import log
 
 
 def build_demo_effect() -> Effect:
@@ -24,15 +25,12 @@ def build_demo_effect() -> Effect:
         "rate": 0,
         "mode": 0,
         "sync": False,
-
         "wave": 0,
         "filter": 0,
         "tone": 55,
-
         "pre": 10,
         "post": 70,
         "dry": 90,
-
         "detune": 0,
         "bpm": 120,
         "div": 2,
@@ -99,7 +97,6 @@ def main():
     clock = pygame.time.Clock()
 
     effect = build_demo_effect()
-
     prof = Profiler(print_interval_s=1.0)
 
     dirty = DIRTY_ALL
@@ -135,7 +132,7 @@ def main():
         prof.tick_loop()
         line = prof.maybe_report()
         if line:
-            print(line)
+            log.profile(line)
 
     pygame.quit()
 

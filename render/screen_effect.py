@@ -22,37 +22,29 @@ ICON_BYPASS = Icon(ico.badge_bypass)
 
 
 def _fill_rect(canvas, rect, color):
-    """
-    Backend-agnostic "clear this rect" using round_rect(radius=0).
-    """
     x, y, w, h = rect
     canvas.round_rect((x, y, w, h), radius=0, color=color, fill=True)
 
 
 def draw_page_slots(canvas, x, y, n_pages: int, page_index: int, theme):
-    """
-    Draws a rounded 'page indicator' pill containing N small boxes.
-    The active page is filled; others are outlines.
-    Returns the pill rect (x,y,w,h).
-    """
     n = max(1, int(n_pages))
     idx = max(0, min(n - 1, int(page_index)))
 
-    pad_x = 10
-    pad_y = 5
-    gap = 4
+    pad_x = theme.PAGE_SLOTS_PAD_X
+    pad_y = theme.PAGE_SLOTS_PAD_Y
+    gap = theme.PAGE_SLOTS_GAP
 
     pill_h = theme.PAGEBOX_H
     inner_h = pill_h - 2 * pad_y
 
-    box_h = max(10, min(14, inner_h))
+    box_h = max(10, min(theme.PAGE_SLOTS_MAX_BOX, inner_h))
     box_w = box_h
 
     max_pill_w = theme.W - 2 * theme.HEADER_X
     needed_w = pad_x * 2 + n * box_w + (n - 1) * gap
 
     if needed_w > max_pill_w:
-        box_w = max(6, (max_pill_w - pad_x * 2 - (n - 1) * gap) // n)
+        box_w = max(theme.PAGE_SLOTS_MIN_BOX, (max_pill_w - pad_x * 2 - (n - 1) * gap) // n)
         box_h = min(box_h, box_w)
 
     pill_w = pad_x * 2 + n * box_w + (n - 1) * gap
@@ -66,10 +58,10 @@ def draw_page_slots(canvas, x, y, n_pages: int, page_index: int, theme):
         r = (sx + i * (box_w + gap), sy, box_w, box_h)
 
         if i == idx:
-            canvas.round_rect(r, radius=3, color=theme.FG, fill=True)
-            canvas.round_rect(r, radius=3, color=theme.FG, fill=False, width=2)
+            canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.FG, fill=True)
+            canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.FG, fill=False, width=theme.PAGE_SLOTS_ACTIVE_OUTLINE_W)
         else:
-            canvas.round_rect(r, radius=3, color=theme.DIM, fill=False, width=2)
+            canvas.round_rect(r, radius=theme.PAGE_SLOTS_ACTIVE_RADIUS, color=theme.DIM, fill=False, width=theme.PAGE_SLOTS_INACTIVE_OUTLINE_W)
 
     return (x, y, pill_w, pill_h)
 
@@ -112,25 +104,11 @@ def _render_page_slots(canvas, effect: Effect, theme: Theme) -> None:
 
 
 def _render_empty_tile(canvas, rect, theme: Theme) -> None:
-    """
-    Draw a subtle placeholder for missing tiles (pages with < 3 controls).
-    Keeps layout stable without implying focus.
-    """
     x, y, w, h = rect
-
-    # subtle outline only (very dim)
     canvas.round_rect((x, y, w, h), theme.TILE_RADIUS, theme.DIM, fill=False, width=1)
-
-    # small centered marker
     s = "---"
     tw, th = canvas.text_size(theme.FONT_M, s)
-    canvas.text(
-        theme.FONT_M,
-        x + (w - tw) // 2,
-        y + (h - th) // 2,
-        s,
-        theme.DIM,
-    )
+    canvas.text(theme.FONT_M, x + (w - tw) // 2, y + (h - th) // 2, s, theme.DIM)
 
 
 def _render_tile(canvas, effect: Effect, theme: Theme, tile_i: int) -> None:
@@ -164,14 +142,6 @@ def _render_tiles(canvas, effect: Effect, theme: Theme, mask: int) -> None:
 
 
 def render_effect_editor(canvas, effect: Effect, theme: Theme, dirty_mask: int = DIRTY_ALL) -> None:
-    """
-    Incremental renderer:
-      - DIRTY_ALL: full redraw (clears screen)
-      - DIRTY_HEADER: redraw header+badge
-      - DIRTY_PAGE: redraw page slots
-      - DIRTY_TILES: redraw all tiles (and empty placeholders)
-      - DIRTY_TILE0/1/2: redraw individual tiles
-    """
     if dirty_mask == DIRTY_NONE:
         return
 
